@@ -31,15 +31,15 @@ export function LessonPreview({
 
   return (
     <section className="panel p-6">
-      <h2 className="font-fredoka text-2xl text-brandAccent">✅ Урок готов!</h2>
+      <h2 className="font-fredoka text-2xl text-brandAccent">✅ Lesson is ready!</h2>
       <div className="mt-4 space-y-2 text-sm text-white/90">
         <p>
-          Ребёнок: {childName}, {age} лет
+          Child: {childName}, {age} years
         </p>
-        <p>Тема: {topic}</p>
-        <p>Этапов: {lessonPlan.stages?.length ?? 6}</p>
-        <p>Время: ~45 минут</p>
-        <p className="font-semibold text-brandAccent">Код ребёнка: {code}</p>
+        <p>Topic: {topic}</p>
+        <p>Stages: {lessonPlan.stages?.length ?? 6}</p>
+        <p>Duration: ~45 minutes</p>
+        <p className="font-semibold text-brandAccent">Child code: {code}</p>
       </div>
       <div className="mt-5 flex flex-wrap gap-3">
         <a
@@ -47,7 +47,7 @@ export function LessonPreview({
           href={fileUrl}
           download={`lesson-${code}.html`}
         >
-          Скачать урок
+          Download lesson
         </a>
         <a
           className="rounded-full border border-white/20 px-5 py-2 font-semibold"
@@ -55,7 +55,7 @@ export function LessonPreview({
           target="_blank"
           rel="noreferrer"
         >
-          Открыть в браузере
+          Open in browser
         </a>
       </div>
     </section>

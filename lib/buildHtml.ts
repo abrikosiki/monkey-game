@@ -19,7 +19,7 @@ export function buildLessonHtml(args: {
   const planJson = JSON.stringify(lessonPlan);
 
   return `<!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -74,9 +74,9 @@ export function buildLessonHtml(args: {
 
   <div class="overlay" id="introOverlay">
     <div class="ov-card">
-      <div class="ov-title">✨ ${esc(lessonPlan.storyIntro || "Новый урок")}</div>
+      <div class="ov-title">✨ ${esc(lessonPlan.storyIntro || "New Lesson")}</div>
       <div id="loreBox"></div>
-      <button class="btn" id="startBtn" style="margin-top:14px">Начать урок</button>
+      <button class="btn" id="startBtn" style="margin-top:14px">Start Lesson</button>
     </div>
   </div>
 
@@ -104,17 +104,17 @@ export function buildLessonHtml(args: {
     function showStage(){
       const s = PLAN.stages[G.idx];
       if(!s){
-        $("title").textContent = "🏁 Урок завершён!";
-        $("instruction").textContent = "Отличная работа! Все этапы пройдены.";
+        $("title").textContent = "🏁 Lesson Completed!";
+        $("instruction").textContent = "Great work! You completed all stages.";
         $("question").textContent = "";
         $("content").innerHTML = "";
-        setMsg("Ты получил(а) " + G.coins + " монет!", "ok");
+        setMsg("You earned " + G.coins + " coins!", "ok");
         $("nextBtn").style.display = "none";
         return;
       }
 
-      $("stageLabel").textContent = "🏝️ " + ${JSON.stringify(esc(island))} + " — Этап " + (G.idx + 1) + "/6";
-      $("title").textContent = s.title || ("Этап " + (G.idx + 1));
+      $("stageLabel").textContent = "🏝️ " + ${JSON.stringify(esc(island))} + " — Stage " + (G.idx + 1) + "/6";
+      $("title").textContent = s.title || ("Stage " + (G.idx + 1));
       $("instruction").textContent = s.instruction || "";
       $("question").textContent = s.question || "";
       $("nextBtn").style.display = "none";
@@ -127,7 +127,7 @@ export function buildLessonHtml(args: {
       if(s.mechanic === "animation"){
         const p = document.createElement("div");
         p.className = "text";
-        p.textContent = "Смотри внимательно и нажми Continue";
+        p.textContent = "Watch the scene and click Continue.";
         content.appendChild(p);
         showNext(s.successMessage, s.coinsReward);
         return;
@@ -142,10 +142,10 @@ export function buildLessonHtml(args: {
           b.textContent = opt;
           b.onclick = () => {
             if(String(opt).trim() === normalize(s.correctAnswer)){
-              setMsg(s.successMessage || "Верно!", "ok");
+              setMsg(s.successMessage || "Correct!", "ok");
               showNext(s.successMessage, s.coinsReward);
             } else {
-              setMsg("Попробуй ещё раз", "bad");
+              setMsg("Try again.", "bad");
             }
           };
           wrap.appendChild(b);
@@ -158,16 +158,16 @@ export function buildLessonHtml(args: {
         const inp = document.createElement("input");
         inp.className = "input";
         inp.inputMode = "numeric";
-        inp.placeholder = "Введи ответ";
+        inp.placeholder = "Enter your answer";
         const btn = document.createElement("button");
         btn.className = "btn";
-        btn.textContent = "Проверить";
+        btn.textContent = "Check";
         btn.onclick = () => {
           if(inp.value.trim() === normalize(s.correctAnswer)){
-            setMsg(s.successMessage || "Верно!", "ok");
+            setMsg(s.successMessage || "Correct!", "ok");
             showNext(s.successMessage, s.coinsReward);
           } else {
-            setMsg("Неверно, попробуй снова", "bad");
+            setMsg("Not correct, try again.", "bad");
           }
         };
         content.appendChild(inp);
@@ -178,17 +178,17 @@ export function buildLessonHtml(args: {
       if(s.mechanic === "drawing"){
         const hint = document.createElement("div");
         hint.className = "hint";
-        hint.textContent = "Проверка тьютором: поставь галочку, если задание выполнено.";
+        hint.textContent = "Tutor check: mark as done when the child completes the drawing.";
         const lab = document.createElement("label");
         lab.className = "pill";
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.style.marginRight = "8px";
         lab.appendChild(cb);
-        lab.appendChild(document.createTextNode("Зачтено тьютором"));
+        lab.appendChild(document.createTextNode("Accepted by tutor"));
         cb.onchange = () => {
           if(cb.checked){
-            setMsg(s.successMessage || "Принято!", "ok");
+            setMsg(s.successMessage || "Accepted!", "ok");
             showNext(s.successMessage, s.coinsReward);
           }
         };
@@ -197,10 +197,9 @@ export function buildLessonHtml(args: {
         return;
       }
 
-      // drag_drop (simple selectable chips)
       const info = document.createElement("div");
       info.className = "hint";
-      info.textContent = "Выбери правильные элементы и нажми Проверить";
+      info.textContent = "Select the correct items and click Check.";
       content.appendChild(info);
       const list = document.createElement("div");
       list.className = "drop-list";
@@ -222,16 +221,16 @@ export function buildLessonHtml(args: {
       });
       const check = document.createElement("button");
       check.className = "btn";
-      check.textContent = "Проверить";
+      check.textContent = "Check";
       check.onclick = () => {
         const got = Array.from(G.selected).sort().join("|");
         const expected = normalize(s.correctAnswer);
         const exp = Array.isArray(expected) ? expected.slice().sort().join("|") : expected;
         if(got === exp){
-          setMsg(s.successMessage || "Верно!", "ok");
+          setMsg(s.successMessage || "Correct!", "ok");
           showNext(s.successMessage, s.coinsReward);
         } else {
-          setMsg("Пока неверно, попробуй другой набор", "bad");
+          setMsg("Not yet. Try a different set.", "bad");
         }
       };
       content.appendChild(list);

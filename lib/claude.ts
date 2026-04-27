@@ -1,10 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { LessonPlan, TutorFormValues } from "@/lib/types";
 
-const systemPrompt = `Ты проектируешь новые уроки-игры для Monkey Archipelago (дети 5-9 лет).
-Критично: нельзя копировать старые trial-механики (ракушки/камни/сундук с ключами/коридоры/robomonkey).
-Каждый урок должен быть новой игрой в том же визуальном стиле острова.
-Отвечай только валидным JSON без markdown и комментариев.`;
+const systemPrompt = `You design new lesson games for Monkey Archipelago (kids age 5-9).
+Critical rule: never copy legacy trial mechanics (shells/stones/chest keys/corridors/robomonkey).
+Each lesson must feel like a fresh game while preserving the same visual layout style.
+Return only valid JSON, no markdown, no commentary.
+All user-facing text must be in English.`;
 
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -13,60 +14,60 @@ function getClient() {
 }
 
 function buildPrompt(payload: TutorFormValues & { characterName: string }): string {
-  const diffMap = { easy: "легкий", medium: "средний", hard: "сложный" };
+  const diffMap = { easy: "easy", medium: "medium", hard: "hard" };
 
-  return `Создай НОВЫЙ урок-игру на 6 блоков.
+  return `Create a NEW 6-block lesson game.
 
-РЕБЕНОК: ${payload.childName}, ${payload.age} лет, уровень: ${diffMap[payload.difficulty]}
-ТЕМА УРОКА: ${payload.topic}
-УРОК №: ${payload.lessonNumber}
-ОСТРОВ: ${payload.island}
-ГЕРОЙ: ${payload.characterName}
-НЕ ПОНИМАЕТ: ${payload.weakPoints || "нет"}
-НА ЧТО УПОР: ${payload.focus || "нет"}
-УЖЕ УМЕЕТ: ${payload.knows || "нет"}
-ОСОБЕННОСТИ: ${payload.notes || "нет"}
+CHILD: ${payload.childName}, age ${payload.age}, level: ${diffMap[payload.difficulty]}
+TOPIC: ${payload.topic}
+LESSON NUMBER: ${payload.lessonNumber}
+ISLAND: ${payload.island}
+HERO NAME: ${payload.characterName}
+STRUGGLES: ${payload.weakPoints || "none"}
+FOCUS: ${payload.focus || "none"}
+ALREADY KNOWS: ${payload.knows || "none"}
+NOTES: ${payload.notes || "none"}
 
-Жесткие требования:
-- сохранить структуру 6 блоков: сюжет -> конкретика -> действие -> смысл числа -> абстракция -> миссия
-- минимум 4 разные механики среди: drag_drop, input, choice, drawing, animation
-- задания через действие, не лекции
-- НЕ использовать старый сюжет и старые сцены trial-игры
-- не добавлять этап создания персонажа
-- каждый этап должен быть самостоятельной новой мини-игрой в рамках темы
+Hard requirements:
+- Keep 6 blocks in this order: story -> concreteness -> action -> number meaning -> abstraction -> mission
+- Use at least 4 different mechanics from: drag_drop, input, choice, drawing, animation
+- Teach through interaction, not lecture text
+- Do NOT reuse old trial scenes or old NPC storyline
+- Do NOT add any character-creation stage
+- All titles, instructions, questions, and success messages must be in English
 
-Верни JSON СТРОГО по схеме:
+Return JSON strictly in this schema:
 {
-  "storyIntro": "краткий заголовок урока",
-  "lore": ["строка 1","строка 2","строка 3","строка 4","строка 5"],
+  "storyIntro": "short lesson title",
+  "lore": ["line 1","line 2","line 3","line 4","line 5"],
   "stages": [
     {
       "id": 1,
       "block": 1,
       "mechanic": "animation",
-      "title": "название этапа",
-      "instruction": "короткая инструкция ребенку",
-      "question": "текст задания",
-      "options": ["опция 1", "опция 2"],
-      "correctAnswer": "опция 1",
-      "successMessage": "текст успеха",
+      "title": "stage title",
+      "instruction": "short instruction for child",
+      "question": "task question",
+      "options": ["option 1", "option 2"],
+      "correctAnswer": "option 1",
+      "successMessage": "success text",
       "coinsReward": 10
     }
   ],
   "imagePrompts": [
     {
       "filename": "lesson_island_bg.webp",
-      "prompt": "описание фона острова под тему '${payload.topic}'"
+      "prompt": "background prompt for topic '${payload.topic}'"
     }
   ]
 }
 
-Дополнительные правила заполнения JSON:
-- stages всегда ровно 6 элементов (id=1..6, block=1..6)
-- options обязателен для mechanic=choice и drag_drop
-- correctAnswer: строка для input/choice/animation/drawing, массив строк для drag_drop
-- для drawing проверка делается тьютором, correctAnswer = "принято тьютором"
-- формулировки короткие, игровые, для возраста ${payload.age}`;
+Additional JSON rules:
+- stages must have exactly 6 items (id=1..6, block=1..6)
+- options required for mechanic=choice and drag_drop
+- correctAnswer: string for input/choice/animation/drawing, array for drag_drop
+- for drawing use correctAnswer = "accepted by tutor"
+- keep wording short, playful, age-appropriate`;
 }
 
 function sanitizeTextResponse(text: string) {
@@ -74,32 +75,32 @@ function sanitizeTextResponse(text: string) {
 }
 
 function normalizeLessonPlan(raw: LessonPlan): LessonPlan {
-  const fallbackLore = ["Добро пожаловать!", "Начинаем урок-приключение!"];
+  const fallbackLore = ["Welcome to a new adventure!", "Let's begin today's lesson!"];
   const stages = (raw.stages ?? []).slice(0, 6).map((stage, idx) => ({
     ...stage,
     id: idx + 1,
     block: (idx + 1) as 1 | 2 | 3 | 4 | 5 | 6,
     coinsReward: stage.coinsReward ?? 10,
-    successMessage: stage.successMessage || "Отлично! Продолжаем! ✨",
-    question: stage.question || stage.instruction || "Выполни задание",
-    instruction: stage.instruction || "Сделай шаг и получи награду",
+    successMessage: stage.successMessage || "Great job! Keep going! ✨",
+    question: stage.question || stage.instruction || "Complete the task",
+    instruction: stage.instruction || "Do the task to move forward",
   }));
 
   if (stages.length === 0) {
     return {
-      storyIntro: raw.storyIntro || "Новый остров приключений",
+      storyIntro: raw.storyIntro || "New Island Adventure",
       lore: raw.lore?.length ? raw.lore.slice(0, 5) : fallbackLore,
       stages: [
         {
           id: 1,
           block: 1,
           mechanic: "choice",
-          title: "Разминка",
-          instruction: "Выбери верный ответ",
-          question: "Сколько будет 2 + 2?",
+          title: "Warm-up",
+          instruction: "Pick the correct answer",
+          question: "What is 2 + 2?",
           options: ["3", "4", "5"],
           correctAnswer: "4",
-          successMessage: "Верно! Идем дальше!",
+          successMessage: "Correct! Let's continue!",
           coinsReward: 10,
         },
       ],
@@ -108,7 +109,7 @@ function normalizeLessonPlan(raw: LessonPlan): LessonPlan {
   }
 
   return {
-    storyIntro: raw.storyIntro || "Новый остров приключений",
+    storyIntro: raw.storyIntro || "New Island Adventure",
     lore: raw.lore?.length ? raw.lore.slice(0, 5) : fallbackLore,
     stages,
     imagePrompts: raw.imagePrompts ?? [],
@@ -119,7 +120,7 @@ export async function generateLessonPlan(
   payload: TutorFormValues & { characterName?: string },
 ): Promise<LessonPlan> {
   const anthropic = getClient();
-  const charName = payload.characterName || payload.childName || "Герой";
+  const charName = payload.characterName || payload.childName || "Hero";
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",

@@ -7,8 +7,8 @@ export default function LessonPage({ params }: LessonPageProps) {
     <main className="mx-auto min-h-screen max-w-3xl p-8">
       <h1 className="font-fredoka text-3xl text-brandAccent">Lesson Preview</h1>
       <p className="mt-3 text-white/80">
-        Страница превью урока <strong>{params.id}</strong>. На этапе 2 сюда можно подключить загрузку
-        из Supabase и полный просмотр сохранённого урока.
+        Lesson preview page for <strong>{params.id}</strong>. In phase 2 this page can load full
+        saved lesson data from Supabase.
       </p>
     </main>
   );
