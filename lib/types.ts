@@ -19,7 +19,9 @@ export interface LessonStage {
   title: string;
   instruction: string;
   question: string;
+  examples?: string[];
   options?: string[];
+  visualItems?: string[];
   correctAnswer: string | string[];
   successMessage: string;
   coinsReward: number;

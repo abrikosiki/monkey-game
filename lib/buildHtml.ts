@@ -36,6 +36,13 @@ function injectLessonRuntime(
   const ISLAND_NAME = ${islandJson};
   const GENERATED_IMAGES = ${imagesJson};
   const CHILD = ${childJson};
+  const FALLBACK_ICONS = [
+    "/assets/characters/shell.webp",
+    "/assets/characters/stone1.webp",
+    "/assets/characters/key1.webp",
+    "/assets/characters/egg.webp",
+    "/assets/characters/crown.webp"
+  ];
 
   function $(id){ return document.getElementById(id); }
   function safe(v){ return (v ?? "").toString(); }
@@ -86,7 +93,13 @@ function injectLessonRuntime(
       pImg.src = src;
       pImg.style.display = "block";
       pImg.style.objectFit = "contain";
+      pImg.onerror = function(){
+        pImg.style.display = "none";
+        if(pEmoji) pEmoji.style.display = "block";
+      };
       if(pEmoji) pEmoji.style.display = "none";
+    } else if(pEmoji){
+      pEmoji.style.display = "block";
     }
   }
 
@@ -166,10 +179,11 @@ function injectLessonRuntime(
     root.style.zIndex = "30";
     root.innerHTML = ''
       + '<div class="q-zone" style="width:55%;height:100%;display:block;">'
-      + '  <div class="q-card" style="height:100%;display:flex;flex-direction:column;gap:10px;">'
+      + '  <div class="q-card" style="height:100%;display:flex;flex-direction:column;gap:10px;background:transparent;border:none;box-shadow:none;padding:8px 2px;">'
       + '  <div id="dynTitle" class="q-head"></div>'
       + '  <div id="dynInstruction" class="q-line"></div>'
       + '  <div id="dynQuestion" class="q-line" style="font-size:44px;line-height:1.02;color:#7ee0d4;font-family:\\'Fredoka One\\',cursive;"></div>'
+      + '  <div id="dynExamples" class="q-line" style="font-size:13px;color:#fff;opacity:.88;"></div>'
       + '  <div id="dynIcons" style="display:flex;gap:8px;flex-wrap:wrap;min-height:34px;"></div>'
       + '  <div id="dynContent" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;"></div>'
       + '  <div id="dynMsg" class="q-line" style="min-height:22px;font-weight:800;"></div>'
@@ -191,6 +205,7 @@ function injectLessonRuntime(
     const instruction = $("dynInstruction");
     const question = $("dynQuestion");
     const content = $("dynContent");
+    const examplesEl = $("dynExamples");
     const icons = $("dynIcons");
     const msg = $("dynMsg");
     const nextBtn = $("dynNextBtn");
@@ -225,6 +240,7 @@ function injectLessonRuntime(
       selected = new Set();
       nextBtn.style.display = "none";
       content.innerHTML = "";
+      if(examplesEl) examplesEl.textContent = "";
       if(icons) icons.innerHTML = "";
       setMsg("", true);
 
@@ -242,6 +258,10 @@ function injectLessonRuntime(
       title.textContent = safe(stage.title || ("Stage "+(index+1)));
       instruction.textContent = safe(stage.instruction || "");
       question.textContent = safe(stage.question || "");
+      if(examplesEl){
+        const ex = Array.isArray(stage.examples) ? stage.examples.slice(0,5) : [];
+        examplesEl.textContent = ex.length ? ("Practice: " + ex.join(" • ")) : "";
+      }
 
       const mechanic = safe(stage.mechanic);
       const answer = toAnswer(stage.correctAnswer);
@@ -251,6 +271,18 @@ function injectLessonRuntime(
           const img = document.createElement("img");
           img.src = safe(pair[1]);
           img.alt = safe(pair[0]);
+          img.style.width = "30px";
+          img.style.height = "30px";
+          img.style.objectFit = "cover";
+          img.style.borderRadius = "999px";
+          img.style.border = "1px solid rgba(255,255,255,.35)";
+          icons.appendChild(img);
+        });
+      } else if(icons){
+        FALLBACK_ICONS.forEach(function(src){
+          const img = document.createElement("img");
+          img.src = src;
+          img.alt = "item";
           img.style.width = "30px";
           img.style.height = "30px";
           img.style.objectFit = "cover";
@@ -323,7 +355,9 @@ function injectLessonRuntime(
       let iconIdx = 0;
       options.forEach(function(item){
         const imageEntries = Object.entries(GENERATED_IMAGES || {});
-        const iconSrc = imageEntries.length ? safe(imageEntries[iconIdx % imageEntries.length][1]) : "";
+        const iconSrc = imageEntries.length
+          ? safe(imageEntries[iconIdx % imageEntries.length][1])
+          : safe(FALLBACK_ICONS[iconIdx % FALLBACK_ICONS.length]);
         iconIdx += 1;
         const chip = document.createElement("button");
         chip.style.padding = "6px 8px";

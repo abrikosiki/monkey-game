@@ -35,6 +35,8 @@ Hard requirements:
 - Do NOT reuse old trial scenes or old NPC storyline
 - Do NOT add any character-creation stage
 - All titles, instructions, questions, and success messages must be in English
+- Keep text minimal: instruction <= 8 words, question <= 12 words
+- Every stage must include exactly 5 short practice examples
 
 Return JSON strictly in this schema:
 {
@@ -48,7 +50,9 @@ Return JSON strictly in this schema:
       "title": "stage title",
       "instruction": "short instruction for child",
       "question": "task question",
+      "examples": ["ex1","ex2","ex3","ex4","ex5"],
       "options": ["option 1", "option 2"],
+      "visualItems": ["item_a","item_b","item_c","item_d","item_e"],
       "correctAnswer": "option 1",
       "successMessage": "success text",
       "coinsReward": 10
@@ -56,14 +60,43 @@ Return JSON strictly in this schema:
   ],
   "imagePrompts": [
     {
+      "filename": "lesson_bg_left.webp",
+      "prompt": "left scenic background, no text"
+    },
+    {
+      "filename": "lesson_bg_right.webp",
+      "prompt": "right interactive background zone, no text"
+    },
+    {
       "filename": "lesson_island_bg.webp",
       "prompt": "background prompt for topic '${payload.topic}'"
+    },
+    {
+      "filename": "lesson_item_1.webp",
+      "prompt": "interactive item icon 1, transparent background"
+    },
+    {
+      "filename": "lesson_item_2.webp",
+      "prompt": "interactive item icon 2, transparent background"
+    },
+    {
+      "filename": "lesson_item_3.webp",
+      "prompt": "interactive item icon 3, transparent background"
+    },
+    {
+      "filename": "lesson_item_4.webp",
+      "prompt": "interactive item icon 4, transparent background"
+    },
+    {
+      "filename": "lesson_item_5.webp",
+      "prompt": "interactive item icon 5, transparent background"
     }
   ]
 }
 
 Additional JSON rules:
 - stages must have exactly 6 items (id=1..6, block=1..6)
+- examples required for every stage and must be length 5
 - options required for mechanic=choice and drag_drop
 - correctAnswer: string for input/choice/animation/drawing, array for drag_drop
 - for drawing use correctAnswer = "accepted by tutor"
@@ -84,6 +117,14 @@ function normalizeLessonPlan(raw: LessonPlan): LessonPlan {
     successMessage: stage.successMessage || "Great job! Keep going! ✨",
     question: stage.question || stage.instruction || "Complete the task",
     instruction: stage.instruction || "Do the task to move forward",
+    examples:
+      Array.isArray(stage.examples) && stage.examples.length >= 5
+        ? stage.examples.slice(0, 5)
+        : ["Example 1", "Example 2", "Example 3", "Example 4", "Example 5"],
+    visualItems:
+      Array.isArray(stage.visualItems) && stage.visualItems.length
+        ? stage.visualItems.slice(0, 5)
+        : undefined,
   }));
 
   if (stages.length === 0) {
