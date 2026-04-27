@@ -2,12 +2,54 @@ import OpenAI from "openai";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import type { ImagePrompt } from "@/lib/types";
 
-const STYLE_SUFFIX = `
-Style: 3D cartoon Pixar aesthetic, warm earthy tones,
-vibrant colors, clean illustration,
-isolated on pure transparent background, WEBP format.
-Same style as the other game assets.
+const STYLE_LOCK = `
+You generate game assets for Monkey Archipelago.
+Your output must match the exact visual language of the trial lesson.
+
+STYLE LOCK (MANDATORY)
+- 3D cartoon cinematic look
+- warm tropical lighting, soft bloom
+- rich but clean color palette (teal, sand, jungle green, gold accents)
+- kid-friendly premium educational game style
+- rounded silhouettes, readable at small size
+- no photorealism, no flat vector, no anime
+- high contrast edges for UI readability
+- consistent material style across all assets
+
+COMPOSITION RULES
+- For ITEMS/ICONS:
+  - single object centered
+  - transparent background
+  - no text, no labels, no watermark
+  - object fully visible with safe margins
+- For BACKGROUNDS:
+  - produce coordinated island-style scenic backgrounds
+  - keep cleaner areas where puzzle UI can sit
+  - no text overlays
+- For UI DECOR:
+  - subtle glow and magical adventure mood
+
+TECH SPECS
+- output suitable for WEBP conversion
+- no embedded typography
+- no logos, signatures, or watermarks
+
+CONSISTENCY TAG
+MonkeyArchipelago_TrialStyle_v1
 `;
+
+function classifyAsset(filename: string): "background" | "item" {
+  return /bg|background|island|left|right/i.test(filename) ? "background" : "item";
+}
+
+function buildLockedPrompt(item: ImagePrompt) {
+  const kind = classifyAsset(item.filename);
+  const kindRules =
+    kind === "background"
+      ? "Asset type: island background. Keep composition readable behind gameplay UI."
+      : "Asset type: item icon. Centered object, transparent background, no text.";
+  return `${STYLE_LOCK}\n\n${kindRules}\n\nTask:\n${item.prompt}`;
+}
 
 function getOpenAI() {
   const key = process.env.OPENAI_API_KEY;
@@ -45,7 +87,7 @@ export async function generateOrReuseImages(prompts: ImagePrompt[]) {
 
     const image = await openai.images.generate({
       model: "gpt-image-1",
-      prompt: `${item.prompt}\n${STYLE_SUFFIX}`,
+      prompt: buildLockedPrompt(item),
       size: "1024x1024",
       quality: "medium",
     });
