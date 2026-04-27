@@ -4,7 +4,12 @@ import type { LessonPlan } from "@/lib/types";
 
 function loadTemplate() {
   const p = path.join(process.cwd(), "lib", "baseTemplate.html");
-  return fs.readFileSync(p, "utf-8");
+  const raw = fs.readFileSync(p, "utf-8");
+  // Generated lessons are opened from blob URLs; relative asset paths break there.
+  // Force absolute root paths so trial assets always resolve.
+  return raw
+    .replaceAll("url('assets/characters/", "url('/assets/characters/")
+    .replaceAll('src="assets/characters/', 'src="/assets/characters/');
 }
 
 function injectLessonRuntime(
@@ -44,12 +49,12 @@ function injectLessonRuntime(
   function toAnswer(v){ return Array.isArray(v) ? v.map(String) : String(v ?? ""); }
   function getCharacterAsset(type, outfit){
     const map = {
-      boy:{brown:'assets/characters/boy_brown.webp',blue:'assets/characters/boy_blue.webp',green:'assets/characters/boy_green.webp'},
-      girl:{brown:'assets/characters/girl_brown.webp',blue:'assets/characters/girl_blue.webp',green:'assets/characters/girl_green.webp'},
-      elf:{red:'assets/characters/elf_red.webp',blue:'assets/characters/elf_blue.webp',green:'assets/characters/elf_green.webp'},
-      wizard:{red:'assets/characters/wizard_red.webp',blue:'assets/characters/wizard_blue.webp',green:'assets/characters/wizard_green.webp'},
-      pirate:{brown:'assets/characters/pirate_brown.webp',blue:'assets/characters/pirate_blue.webp',green:'assets/characters/pirate_green.webp'},
-      fairy:{red:'assets/characters/fairy_red.webp',purple:'assets/characters/fairy_purple.webp',green:'assets/characters/fairy_green.webp'}
+      boy:{brown:'/assets/characters/boy_brown.webp',blue:'/assets/characters/boy_blue.webp',green:'/assets/characters/boy_green.webp'},
+      girl:{brown:'/assets/characters/girl_brown.webp',blue:'/assets/characters/girl_blue.webp',green:'/assets/characters/girl_green.webp'},
+      elf:{red:'/assets/characters/elf_red.webp',blue:'/assets/characters/elf_blue.webp',green:'/assets/characters/elf_green.webp'},
+      wizard:{red:'/assets/characters/wizard_red.webp',blue:'/assets/characters/wizard_blue.webp',green:'/assets/characters/wizard_green.webp'},
+      pirate:{brown:'/assets/characters/pirate_brown.webp',blue:'/assets/characters/pirate_blue.webp',green:'/assets/characters/pirate_green.webp'},
+      fairy:{red:'/assets/characters/fairy_red.webp',purple:'/assets/characters/fairy_purple.webp',green:'/assets/characters/fairy_green.webp'}
     };
     const t = type && map[type] ? type : "boy";
     const o = outfit && map[t][outfit] ? outfit : Object.keys(map[t])[0];
@@ -58,7 +63,9 @@ function injectLessonRuntime(
   function trySetBackgroundFromGenerated(){
     const entries = Object.entries(GENERATED_IMAGES || {});
     if(!entries.length) return;
-    const bg = entries.find(function(pair){ return /bg|background|island/i.test(pair[0]); }) || entries[0];
+    const bg = entries.find(function(pair){ return /right.*bg|bg.*right|right.*background|background.*right/i.test(pair[0]); })
+      || entries.find(function(pair){ return /bg|background|island|left|right/i.test(pair[0]); })
+      || entries[0];
     if(!bg || !bg[1]) return;
     const game = $("game");
     if(!game) return;
