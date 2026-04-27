@@ -99,6 +99,7 @@ interface ChildData {
   age: number | null;
   character_type: string;
   outfit: string;
+  char_img?: string | null;
   coins: number;
   inventory: string[];
 }
@@ -229,6 +230,12 @@ export function TutorForm() {
           images,
           character: form.character,
           island: form.island,
+          childProfile: {
+            name: childData?.name ?? form.childName,
+            character_type: childData?.character_type ?? form.character,
+            outfit: childData?.outfit ?? "brown",
+            char_img: childData?.char_img ?? null,
+          },
         }),
       });
       if (!buildRes.ok) throw new Error("Failed to build HTML.");

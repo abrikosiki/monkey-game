@@ -25,6 +25,12 @@ async function checkLibrary(filename: string) {
   return data?.some((item) => item.name === filename) ?? false;
 }
 
+function toPublicUrl(path: string) {
+  const supabase = getSupabaseAdmin();
+  const { data } = supabase.storage.from("game-assets").getPublicUrl(path);
+  return data.publicUrl || path;
+}
+
 export async function generateOrReuseImages(prompts: ImagePrompt[]) {
   const openai = getOpenAI();
   const supabase = getSupabaseAdmin();
@@ -33,7 +39,7 @@ export async function generateOrReuseImages(prompts: ImagePrompt[]) {
   for (const item of prompts) {
     const exists = await checkLibrary(item.filename);
     if (exists) {
-      uploaded[item.filename] = `library/${item.filename}`;
+      uploaded[item.filename] = toPublicUrl(`library/${item.filename}`);
       continue;
     }
 
@@ -54,7 +60,7 @@ export async function generateOrReuseImages(prompts: ImagePrompt[]) {
       .from("game-assets")
       .upload(filepath, buffer, { contentType: "image/webp", upsert: true });
 
-    uploaded[item.filename] = filepath;
+    uploaded[item.filename] = toPublicUrl(filepath);
   }
 
   return uploaded;

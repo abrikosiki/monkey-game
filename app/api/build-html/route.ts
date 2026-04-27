@@ -7,6 +7,12 @@ interface BuildHtmlPayload {
   images: Record<string, string>;
   character: string;
   island: string;
+  childProfile?: {
+    name?: string | null;
+    character_type?: string | null;
+    outfit?: string | null;
+    char_img?: string | null;
+  };
 }
 
 export async function POST(request: Request) {
@@ -17,6 +23,7 @@ export async function POST(request: Request) {
       images: body.images ?? {},
       character: body.character,
       island: body.island,
+      childProfile: body.childProfile,
     });
     return NextResponse.json({ html });
   } catch (error) {

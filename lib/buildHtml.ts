@@ -7,15 +7,30 @@ function loadTemplate() {
   return fs.readFileSync(p, "utf-8");
 }
 
-function injectLessonRuntime(html: string, lessonPlan: LessonPlan, island: string) {
+function injectLessonRuntime(
+  html: string,
+  lessonPlan: LessonPlan,
+  island: string,
+  images: Record<string, string>,
+  childProfile?: {
+    name?: string | null;
+    character_type?: string | null;
+    outfit?: string | null;
+    char_img?: string | null;
+  },
+) {
   const planJson = JSON.stringify(lessonPlan).replaceAll("</script>", "<\\/script>");
   const islandJson = JSON.stringify(island).replaceAll("</script>", "<\\/script>");
+  const imagesJson = JSON.stringify(images ?? {}).replaceAll("</script>", "<\\/script>");
+  const childJson = JSON.stringify(childProfile ?? {}).replaceAll("</script>", "<\\/script>");
 
   const runtime = `
 <script id="dynamic-lesson-runtime">
 (function(){
   const LESSON_PLAN = ${planJson};
   const ISLAND_NAME = ${islandJson};
+  const GENERATED_IMAGES = ${imagesJson};
+  const CHILD = ${childJson};
 
   function $(id){ return document.getElementById(id); }
   function safe(v){ return (v ?? "").toString(); }
@@ -27,6 +42,44 @@ function injectLessonRuntime(html: string, lessonPlan: LessonPlan, island: strin
     return aa.every((x,i)=>x===bb[i]);
   }
   function toAnswer(v){ return Array.isArray(v) ? v.map(String) : String(v ?? ""); }
+  function getCharacterAsset(type, outfit){
+    const map = {
+      boy:{brown:'assets/characters/boy_brown.webp',blue:'assets/characters/boy_blue.webp',green:'assets/characters/boy_green.webp'},
+      girl:{brown:'assets/characters/girl_brown.webp',blue:'assets/characters/girl_blue.webp',green:'assets/characters/girl_green.webp'},
+      elf:{red:'assets/characters/elf_red.webp',blue:'assets/characters/elf_blue.webp',green:'assets/characters/elf_green.webp'},
+      wizard:{red:'assets/characters/wizard_red.webp',blue:'assets/characters/wizard_blue.webp',green:'assets/characters/wizard_green.webp'},
+      pirate:{brown:'assets/characters/pirate_brown.webp',blue:'assets/characters/pirate_blue.webp',green:'assets/characters/pirate_green.webp'},
+      fairy:{red:'assets/characters/fairy_red.webp',purple:'assets/characters/fairy_purple.webp',green:'assets/characters/fairy_green.webp'}
+    };
+    const t = type && map[type] ? type : "boy";
+    const o = outfit && map[t][outfit] ? outfit : Object.keys(map[t])[0];
+    return map[t][o];
+  }
+  function trySetBackgroundFromGenerated(){
+    const entries = Object.entries(GENERATED_IMAGES || {});
+    if(!entries.length) return;
+    const bg = entries.find(function(pair){ return /bg|background|island/i.test(pair[0]); }) || entries[0];
+    if(!bg || !bg[1]) return;
+    const game = $("game");
+    if(!game) return;
+    game.style.backgroundImage = "url('" + bg[1] + "')";
+    game.style.backgroundSize = "cover";
+    game.style.backgroundPosition = "center";
+  }
+  function applyChildCharacter(){
+    const pImg = $("pImg");
+    const pEmoji = $("pEmoji");
+    const pTag = $("pTag");
+    const name = safe(CHILD.name || "Hero");
+    const src = safe(CHILD.char_img || getCharacterAsset(CHILD.character_type, CHILD.outfit));
+    if(pTag) pTag.textContent = name;
+    if(pImg && src){
+      pImg.src = src;
+      pImg.style.display = "block";
+      pImg.style.objectFit = "contain";
+      if(pEmoji) pEmoji.style.display = "none";
+    }
+  }
 
   function setupChrome(){
     try{ if(typeof show==="function") show("game"); }catch(_){}
@@ -47,6 +100,8 @@ function injectLessonRuntime(html: string, lessonPlan: LessonPlan, island: strin
 
     if($("globalBackBtn")) $("globalBackBtn").style.display="none";
     if($("skipBtn")) $("skipBtn").style.display="none";
+    trySetBackgroundFromGenerated();
+    applyChildCharacter();
   }
 
   function renderLore(container){
@@ -79,6 +134,7 @@ function injectLessonRuntime(html: string, lessonPlan: LessonPlan, island: strin
       + '  <div id="dynTitle" style="font-size:28px;font-family:\\'Fredoka One\\',cursive;color:#f4d03f;"></div>'
       + '  <div id="dynInstruction" style="font-size:16px;color:#fff;"></div>'
       + '  <div id="dynQuestion" style="font-size:30px;font-family:\\'Fredoka One\\',cursive;color:#7ee0d4;line-height:1.1;"></div>'
+      + '  <div id="dynIcons" style="display:flex;gap:8px;flex-wrap:wrap;min-height:34px;"></div>'
       + '  <div id="dynContent" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;"></div>'
       + '  <div id="dynMsg" style="min-height:22px;font-weight:800;"></div>'
       + '  <button id="dynNextBtn" class="nxt" style="display:none;align-self:flex-start;">Next →</button>'
@@ -98,6 +154,7 @@ function injectLessonRuntime(html: string, lessonPlan: LessonPlan, island: strin
     const instruction = $("dynInstruction");
     const question = $("dynQuestion");
     const content = $("dynContent");
+    const icons = $("dynIcons");
     const msg = $("dynMsg");
     const nextBtn = $("dynNextBtn");
     const stageLabel = $("stageLabel");
@@ -131,6 +188,7 @@ function injectLessonRuntime(html: string, lessonPlan: LessonPlan, island: strin
       selected = new Set();
       nextBtn.style.display = "none";
       content.innerHTML = "";
+      if(icons) icons.innerHTML = "";
       setMsg("", true);
 
       const stage = stages[index];
@@ -150,6 +208,20 @@ function injectLessonRuntime(html: string, lessonPlan: LessonPlan, island: strin
 
       const mechanic = safe(stage.mechanic);
       const answer = toAnswer(stage.correctAnswer);
+      const imageEntries = Object.entries(GENERATED_IMAGES || {});
+      if(icons && imageEntries.length){
+        imageEntries.slice(0,6).forEach(function(pair){
+          const img = document.createElement("img");
+          img.src = safe(pair[1]);
+          img.alt = safe(pair[0]);
+          img.style.width = "30px";
+          img.style.height = "30px";
+          img.style.objectFit = "cover";
+          img.style.borderRadius = "999px";
+          img.style.border = "1px solid rgba(255,255,255,.35)";
+          icons.appendChild(img);
+        });
+      }
 
       if(mechanic === "animation"){
         const text = document.createElement("div");
@@ -291,6 +363,12 @@ export function buildLessonHtml(args: {
   images: Record<string, string>;
   character: string;
   island: string;
+  childProfile?: {
+    name?: string | null;
+    character_type?: string | null;
+    outfit?: string | null;
+    char_img?: string | null;
+  };
 }) {
   let html = loadTemplate();
 
@@ -309,5 +387,11 @@ export function buildLessonHtml(args: {
   html = html.replace("{{STAGE3_SETS_JSON}}", JSON.stringify(fallbackSets));
   html = html.replace("{{STAGE5_SIDES_JSON}}", JSON.stringify(["left", "right", "right"]));
 
-  return injectLessonRuntime(html, args.lessonPlan, args.island);
+  return injectLessonRuntime(
+    html,
+    args.lessonPlan,
+    args.island,
+    args.images ?? {},
+    args.childProfile,
+  );
 }
