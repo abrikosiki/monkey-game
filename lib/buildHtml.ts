@@ -82,7 +82,6 @@ function injectLessonRuntime(
   }
 
   function setupChrome(){
-    try{ if(typeof show==="function") show("game"); }catch(_){}
     const intro = $("intro");
     const character = $("character");
     const profile = $("profile");
@@ -91,7 +90,10 @@ function injectLessonRuntime(
     const game = $("game");
     if(game) game.classList.add("active");
 
-    const wraps = ["stage1Totem","shellsArea","stage2Wrap","stage3Wrap","stage4Wrap","stage5Wrap","stage6Wrap"];
+    const wraps = [
+      "stage1Totem","shellsArea","stage2Wrap","stage3Wrap","stage4Wrap","stage5Wrap","stage6Wrap",
+      "stage6Task","stage6Final","stage4Keys","stage4Locks","stage5Wrap","stage6Wrap"
+    ];
     wraps.forEach(function(id){ const el=$(id); if(el) el.style.display="none"; });
 
     const lbl=$("stageLabel");
@@ -102,6 +104,30 @@ function injectLessonRuntime(
     if($("skipBtn")) $("skipBtn").style.display="none";
     trySetBackgroundFromGenerated();
     applyChildCharacter();
+
+    // Hard-disable legacy stage rendering to prevent overlay conflicts.
+    if(!$("dynLegacyGuardStyle")){
+      const style = document.createElement("style");
+      style.id = "dynLegacyGuardStyle";
+      style.textContent = [
+        "#stage1Totem","#shellsArea","#stage2Wrap","#stage3Wrap","#stage4Wrap","#stage5Wrap","#stage6Wrap",
+        "#stage6Task","#stage6Final",".stage2-wrap",".stage3-wrap",".stage4-wrap",".stage5-wrap",".stage6-wrap"
+      ].join(",")+"{display:none !important;visibility:hidden !important;pointer-events:none !important;}";
+      document.head.appendChild(style);
+    }
+
+    // Prevent legacy controls from changing stages while dynamic lesson is active.
+    try{
+      window.skipCurrentStage = function(){};
+      window.goBack = function(){};
+      window.activateStage = function(){};
+      window.initStage1 = function(){};
+      window.initStage2 = function(){};
+      window.initStage3 = function(){};
+      window.initStage4 = function(){};
+      window.initStage5 = function(){};
+      window.initStage6 = function(){};
+    }catch(_){}
   }
 
   function renderLore(container){
