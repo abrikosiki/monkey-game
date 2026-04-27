@@ -1,12 +1,289 @@
+import fs from "fs";
+import path from "path";
 import type { LessonPlan } from "@/lib/types";
 
-function esc(text: string) {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+function loadTemplate() {
+  const p = path.join(process.cwd(), "lib", "baseTemplate.html");
+  return fs.readFileSync(p, "utf-8");
+}
+
+function injectLessonRuntime(html: string, lessonPlan: LessonPlan, island: string) {
+  const planJson = JSON.stringify(lessonPlan).replaceAll("</script>", "<\\/script>");
+  const islandJson = JSON.stringify(island).replaceAll("</script>", "<\\/script>");
+
+  const runtime = `
+<script id="dynamic-lesson-runtime">
+(function(){
+  const LESSON_PLAN = ${planJson};
+  const ISLAND_NAME = ${islandJson};
+
+  function $(id){ return document.getElementById(id); }
+  function safe(v){ return (v ?? "").toString(); }
+  function arrEq(a,b){
+    if(!Array.isArray(a) || !Array.isArray(b)) return false;
+    if(a.length!==b.length) return false;
+    const aa=[...a].map(String).sort();
+    const bb=[...b].map(String).sort();
+    return aa.every((x,i)=>x===bb[i]);
+  }
+  function toAnswer(v){ return Array.isArray(v) ? v.map(String) : String(v ?? ""); }
+
+  function setupChrome(){
+    try{ if(typeof show==="function") show("game"); }catch(_){}
+    const intro = $("intro");
+    const character = $("character");
+    const profile = $("profile");
+    const shop = $("shop");
+    [intro, character, profile, shop].forEach(function(el){ if(el) el.classList.remove("active"); });
+    const game = $("game");
+    if(game) game.classList.add("active");
+
+    const wraps = ["stage1Totem","shellsArea","stage2Wrap","stage3Wrap","stage4Wrap","stage5Wrap","stage6Wrap"];
+    wraps.forEach(function(id){ const el=$(id); if(el) el.style.display="none"; });
+
+    const lbl=$("stageLabel");
+    if(lbl) lbl.textContent="🏝️ "+ISLAND_NAME+" — Stage 1/6";
+    if($("coinCount")) $("coinCount").textContent="0";
+
+    if($("globalBackBtn")) $("globalBackBtn").style.display="none";
+    if($("skipBtn")) $("skipBtn").style.display="none";
+  }
+
+  function renderLore(container){
+    const lore = Array.isArray(LESSON_PLAN.lore) ? LESSON_PLAN.lore : [];
+    const title = safe(LESSON_PLAN.storyIntro || "New Island Adventure");
+    const lines = lore.slice(0,5).map(function(line){
+      return '<div style="font-size:16px;line-height:1.4;margin-bottom:6px;">'+safe(line)+'</div>';
+    }).join("");
+    container.innerHTML = ''
+      + '<div style="font-family:\\'Fredoka One\\',cursive;font-size:30px;color:#f4d03f;margin-bottom:10px;">✨ '+title+'</div>'
+      + '<div>'+lines+'</div>'
+      + '<button id="dynStartBtn" class="nxt" style="margin-top:14px;">Start Lesson</button>';
+  }
+
+  function mountDynamicStageUI(){
+    const izone = $("izone");
+    if(!izone) return null;
+
+    const root = document.createElement("div");
+    root.id = "dynLessonRoot";
+    root.style.position = "absolute";
+    root.style.inset = "0";
+    root.style.display = "flex";
+    root.style.alignItems = "stretch";
+    root.style.justifyContent = "flex-end";
+    root.style.padding = "24px 22px 18px";
+    root.style.zIndex = "30";
+    root.innerHTML = ''
+      + '<div style="width:55%;height:100%;background:rgba(7,12,24,.78);border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;">'
+      + '  <div id="dynTitle" style="font-size:28px;font-family:\\'Fredoka One\\',cursive;color:#f4d03f;"></div>'
+      + '  <div id="dynInstruction" style="font-size:16px;color:#fff;"></div>'
+      + '  <div id="dynQuestion" style="font-size:30px;font-family:\\'Fredoka One\\',cursive;color:#7ee0d4;line-height:1.1;"></div>'
+      + '  <div id="dynContent" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;"></div>'
+      + '  <div id="dynMsg" style="min-height:22px;font-weight:800;"></div>'
+      + '  <button id="dynNextBtn" class="nxt" style="display:none;align-self:flex-start;">Next →</button>'
+      + '</div>';
+
+    izone.appendChild(root);
+    return root;
+  }
+
+  function runLesson(root){
+    const stages = Array.isArray(LESSON_PLAN.stages) ? LESSON_PLAN.stages.slice(0,6) : [];
+    let index = 0;
+    let coins = 0;
+    let selected = new Set();
+
+    const title = $("dynTitle");
+    const instruction = $("dynInstruction");
+    const question = $("dynQuestion");
+    const content = $("dynContent");
+    const msg = $("dynMsg");
+    const nextBtn = $("dynNextBtn");
+    const stageLabel = $("stageLabel");
+    const coinCount = $("coinCount");
+
+    function setMsg(text, ok){
+      if(!msg) return;
+      msg.textContent = text || "";
+      msg.style.color = ok ? "#8af5b2" : "#ff8f97";
+    }
+
+    function grant(reward){
+      coins += Number(reward || 0);
+      if(coinCount) coinCount.textContent = String(coins);
+    }
+
+    function unlockNext(successText, reward){
+      grant(reward);
+      setMsg(successText || "Great!", true);
+      if(nextBtn){
+        nextBtn.style.display = "inline-block";
+        nextBtn.onclick = function(){
+          index += 1;
+          render();
+        };
+      }
+    }
+
+    function render(){
+      if(!title || !instruction || !question || !content || !nextBtn) return;
+      selected = new Set();
+      nextBtn.style.display = "none";
+      content.innerHTML = "";
+      setMsg("", true);
+
+      const stage = stages[index];
+      if(!stage){
+        title.textContent = "🏁 Lesson Completed!";
+        instruction.textContent = "Great work! All stages are done.";
+        question.textContent = "";
+        content.innerHTML = "";
+        setMsg("You earned "+coins+" coins!", true);
+        return;
+      }
+
+      if(stageLabel) stageLabel.textContent = "🏝️ "+ISLAND_NAME+" — Stage "+(index+1)+"/6";
+      title.textContent = safe(stage.title || ("Stage "+(index+1)));
+      instruction.textContent = safe(stage.instruction || "");
+      question.textContent = safe(stage.question || "");
+
+      const mechanic = safe(stage.mechanic);
+      const answer = toAnswer(stage.correctAnswer);
+
+      if(mechanic === "animation"){
+        const text = document.createElement("div");
+        text.textContent = "Watch the scene, then continue.";
+        text.style.color = "rgba(255,255,255,.82)";
+        content.appendChild(text);
+        unlockNext(stage.successMessage, stage.coinsReward);
+        return;
+      }
+
+      if(mechanic === "choice"){
+        (Array.isArray(stage.options) ? stage.options : []).forEach(function(opt){
+          const b = document.createElement("button");
+          b.className = "q-btn";
+          b.textContent = safe(opt);
+          b.onclick = function(){
+            if(safe(opt).trim() === safe(answer).trim()) unlockNext(stage.successMessage, stage.coinsReward);
+            else setMsg("Try again.", false);
+          };
+          content.appendChild(b);
+        });
+        return;
+      }
+
+      if(mechanic === "input"){
+        const inp = document.createElement("input");
+        inp.className = "q-input";
+        inp.placeholder = "Enter your answer";
+        inp.inputMode = "numeric";
+        const b = document.createElement("button");
+        b.className = "q-btn";
+        b.textContent = "Check";
+        b.onclick = function(){
+          if(inp.value.trim() === safe(answer).trim()) unlockNext(stage.successMessage, stage.coinsReward);
+          else setMsg("Not correct, try again.", false);
+        };
+        content.appendChild(inp);
+        content.appendChild(b);
+        return;
+      }
+
+      if(mechanic === "drawing"){
+        const hint = document.createElement("label");
+        hint.style.display = "inline-flex";
+        hint.style.alignItems = "center";
+        hint.style.gap = "8px";
+        hint.style.padding = "8px 10px";
+        hint.style.borderRadius = "999px";
+        hint.style.border = "1px solid rgba(244,208,63,.6)";
+        hint.style.background = "rgba(244,208,63,.12)";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.onchange = function(){ if(cb.checked) unlockNext(stage.successMessage, stage.coinsReward); };
+        hint.appendChild(cb);
+        hint.appendChild(document.createTextNode("Accepted by tutor"));
+        content.appendChild(hint);
+        return;
+      }
+
+      // drag_drop represented as selectable chips
+      const options = Array.isArray(stage.options) ? stage.options : [];
+      options.forEach(function(item){
+        const chip = document.createElement("button");
+        chip.textContent = safe(item);
+        chip.style.padding = "8px 10px";
+        chip.style.borderRadius = "999px";
+        chip.style.border = "1px solid rgba(126,224,212,.6)";
+        chip.style.background = "rgba(126,224,212,.12)";
+        chip.style.color = "#fff";
+        chip.style.cursor = "pointer";
+        chip.onclick = function(){
+          const key = safe(item);
+          if(selected.has(key)){
+            selected.delete(key);
+            chip.style.borderColor = "rgba(126,224,212,.6)";
+            chip.style.background = "rgba(126,224,212,.12)";
+          }else{
+            selected.add(key);
+            chip.style.borderColor = "rgba(244,208,63,.9)";
+            chip.style.background = "rgba(244,208,63,.22)";
+          }
+        };
+        content.appendChild(chip);
+      });
+      const check = document.createElement("button");
+      check.className = "q-btn";
+      check.textContent = "Check";
+      check.onclick = function(){
+        const got = Array.from(selected).map(String);
+        if(Array.isArray(answer) ? arrEq(got, answer) : got.join("|")===safe(answer)){
+          unlockNext(stage.successMessage, stage.coinsReward);
+        } else {
+          setMsg("Not yet. Try a different set.", false);
+        }
+      };
+      content.appendChild(check);
+    }
+
+    render();
+  }
+
+  function start(){
+    setupChrome();
+    const success = $("successScreen");
+    if(success) success.classList.remove("on");
+
+    const overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.background = "rgba(0,0,0,.62)";
+    overlay.style.zIndex = "60";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.innerHTML = '<div style="width:min(780px,92vw);background:#101728;border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:18px;" id="dynLoreCard"></div>';
+    document.body.appendChild(overlay);
+    renderLore($("dynLoreCard"));
+
+    const startBtn = $("dynStartBtn");
+    if(startBtn){
+      startBtn.onclick = function(){
+        overlay.remove();
+        const root = mountDynamicStageUI();
+        if(root) runLesson(root);
+      };
+    }
+  }
+
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
+})();
+</script>`;
+
+  return html.replace("</body>", `${runtime}\n</body>`);
 }
 
 export function buildLessonHtml(args: {
@@ -15,251 +292,22 @@ export function buildLessonHtml(args: {
   character: string;
   island: string;
 }) {
-  const { lessonPlan, island } = args;
-  const planJson = JSON.stringify(lessonPlan);
+  let html = loadTemplate();
 
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${esc(lessonPlan.storyIntro || "Monkey Archipelago Lesson")}</title>
-  <style>
-    :root{--bg:#101422;--gold:#f4d03f;--accent:#7ee0d4;--danger:#ff7c85}
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Nunito,Arial,sans-serif;background:#0d1221;color:#fff}
-    .game{position:relative;min-height:100vh;background:radial-gradient(circle at 20% 10%,#24345d 0,#101422 60%)}
-    .stage-label{position:absolute;top:12px;left:50%;transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.2);font-weight:800;z-index:20}
-    .coins{position:absolute;top:12px;right:16px;padding:8px 12px;border-radius:12px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.2);font-weight:800;z-index:20}
-    .player{position:absolute;left:14px;bottom:48px;width:140px;height:190px;border-radius:14px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:72px;border:2px solid rgba(255,255,255,.2)}
-    .zone{position:absolute;right:0;top:0;width:55%;height:100%;padding:24px 22px 18px}
-    .card{height:100%;background:rgba(7,12,24,.72);border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
-    .title{font-size:24px;font-weight:900;color:var(--gold)}
-    .text{font-size:16px;line-height:1.4}
-    .question{font-size:22px;font-weight:900;color:var(--accent);margin:4px 0 2px}
-    .opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-    .btn,.opt{border:none;border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer}
-    .opt{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18)}
-    .opt:hover{transform:translateY(-2px)}
-    .btn{background:linear-gradient(135deg,#f7de74,#f4d03f);color:#1a1a2e}
-    .input{width:100%;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.05);color:#fff;font-size:18px}
-    .drop-list{display:flex;flex-wrap:wrap;gap:8px}
-    .pill{padding:8px 10px;border-radius:999px;background:rgba(126,224,212,.15);border:1px solid rgba(126,224,212,.6);cursor:pointer}
-    .pill.sel{background:rgba(244,208,63,.2);border-color:rgba(244,208,63,.8)}
-    .hint{font-size:13px;color:rgba(255,255,255,.7)}
-    .msg{min-height:24px;font-weight:800}
-    .ok{color:#8af5b2}.bad{color:var(--danger)}
-    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:50}
-    .ov-card{width:min(780px,92vw);background:#101728;border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:18px}
-    .ov-title{font-size:30px;font-weight:900;color:var(--gold);margin-bottom:10px}
-    .ov-line{font-size:17px;line-height:1.4}
-  </style>
-</head>
-<body>
-  <div class="game">
-    <div class="stage-label" id="stageLabel">🏝️ ${esc(island)}</div>
-    <div class="coins">🪙 <span id="coinCount">0</span></div>
-    <div class="player">🐵</div>
-    <div class="zone">
-      <div class="card">
-        <div class="title" id="title"></div>
-        <div class="text" id="instruction"></div>
-        <div class="question" id="question"></div>
-        <div id="content"></div>
-        <div class="msg" id="message"></div>
-        <button class="btn" id="nextBtn" style="display:none">Next →</button>
-      </div>
-    </div>
-  </div>
+  // Keep legacy placeholders valid to avoid template breakage.
+  const fallbackSets = [
+    {
+      rows: [
+        { tokens: ["1", "3", "5", "__", "__"], answers: ["7", "9"] },
+        { tokens: ["2", "4", "6", "__", "__"], answers: ["8", "10"] },
+        { tokens: ["9", "8", "7", "__", "__"], answers: ["6", "5"] },
+      ],
+    },
+  ];
 
-  <div class="overlay" id="introOverlay">
-    <div class="ov-card">
-      <div class="ov-title">✨ ${esc(lessonPlan.storyIntro || "New Lesson")}</div>
-      <div id="loreBox"></div>
-      <button class="btn" id="startBtn" style="margin-top:14px">Start Lesson</button>
-    </div>
-  </div>
+  html = html.replace("{{LORE_JSON}}", JSON.stringify(args.lessonPlan.lore ?? []));
+  html = html.replace("{{STAGE3_SETS_JSON}}", JSON.stringify(fallbackSets));
+  html = html.replace("{{STAGE5_SIDES_JSON}}", JSON.stringify(["left", "right", "right"]));
 
-  <script>
-    const PLAN = ${planJson};
-    const G = { idx: 0, coins: 0, selected: new Set() };
-    const $ = (id) => document.getElementById(id);
-
-    function setMsg(text, cls){
-      const el = $("message");
-      el.textContent = text || "";
-      el.className = "msg " + (cls || "");
-    }
-
-    function addCoins(n){
-      G.coins += Number(n || 0);
-      $("coinCount").textContent = String(G.coins);
-    }
-
-    function normalize(ans){
-      if(Array.isArray(ans)) return ans.map(v => String(v).trim());
-      return String(ans ?? "").trim();
-    }
-
-    function showStage(){
-      const s = PLAN.stages[G.idx];
-      if(!s){
-        $("title").textContent = "🏁 Lesson Completed!";
-        $("instruction").textContent = "Great work! You completed all stages.";
-        $("question").textContent = "";
-        $("content").innerHTML = "";
-        setMsg("You earned " + G.coins + " coins!", "ok");
-        $("nextBtn").style.display = "none";
-        return;
-      }
-
-      $("stageLabel").textContent = "🏝️ " + ${JSON.stringify(esc(island))} + " — Stage " + (G.idx + 1) + "/6";
-      $("title").textContent = s.title || ("Stage " + (G.idx + 1));
-      $("instruction").textContent = s.instruction || "";
-      $("question").textContent = s.question || "";
-      $("nextBtn").style.display = "none";
-      setMsg("", "");
-
-      const content = $("content");
-      content.innerHTML = "";
-      G.selected.clear();
-
-      if(s.mechanic === "animation"){
-        const p = document.createElement("div");
-        p.className = "text";
-        p.textContent = "Watch the scene and click Continue.";
-        content.appendChild(p);
-        showNext(s.successMessage, s.coinsReward);
-        return;
-      }
-
-      if(s.mechanic === "choice"){
-        const wrap = document.createElement("div");
-        wrap.className = "opts";
-        (s.options || []).forEach((opt) => {
-          const b = document.createElement("button");
-          b.className = "opt";
-          b.textContent = opt;
-          b.onclick = () => {
-            if(String(opt).trim() === normalize(s.correctAnswer)){
-              setMsg(s.successMessage || "Correct!", "ok");
-              showNext(s.successMessage, s.coinsReward);
-            } else {
-              setMsg("Try again.", "bad");
-            }
-          };
-          wrap.appendChild(b);
-        });
-        content.appendChild(wrap);
-        return;
-      }
-
-      if(s.mechanic === "input"){
-        const inp = document.createElement("input");
-        inp.className = "input";
-        inp.inputMode = "numeric";
-        inp.placeholder = "Enter your answer";
-        const btn = document.createElement("button");
-        btn.className = "btn";
-        btn.textContent = "Check";
-        btn.onclick = () => {
-          if(inp.value.trim() === normalize(s.correctAnswer)){
-            setMsg(s.successMessage || "Correct!", "ok");
-            showNext(s.successMessage, s.coinsReward);
-          } else {
-            setMsg("Not correct, try again.", "bad");
-          }
-        };
-        content.appendChild(inp);
-        content.appendChild(btn);
-        return;
-      }
-
-      if(s.mechanic === "drawing"){
-        const hint = document.createElement("div");
-        hint.className = "hint";
-        hint.textContent = "Tutor check: mark as done when the child completes the drawing.";
-        const lab = document.createElement("label");
-        lab.className = "pill";
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.style.marginRight = "8px";
-        lab.appendChild(cb);
-        lab.appendChild(document.createTextNode("Accepted by tutor"));
-        cb.onchange = () => {
-          if(cb.checked){
-            setMsg(s.successMessage || "Accepted!", "ok");
-            showNext(s.successMessage, s.coinsReward);
-          }
-        };
-        content.appendChild(hint);
-        content.appendChild(lab);
-        return;
-      }
-
-      const info = document.createElement("div");
-      info.className = "hint";
-      info.textContent = "Select the correct items and click Check.";
-      content.appendChild(info);
-      const list = document.createElement("div");
-      list.className = "drop-list";
-      (s.options || []).forEach((item) => {
-        const chip = document.createElement("button");
-        chip.className = "pill";
-        chip.textContent = item;
-        chip.onclick = () => {
-          const key = String(item);
-          if(G.selected.has(key)){
-            G.selected.delete(key);
-            chip.classList.remove("sel");
-          } else {
-            G.selected.add(key);
-            chip.classList.add("sel");
-          }
-        };
-        list.appendChild(chip);
-      });
-      const check = document.createElement("button");
-      check.className = "btn";
-      check.textContent = "Check";
-      check.onclick = () => {
-        const got = Array.from(G.selected).sort().join("|");
-        const expected = normalize(s.correctAnswer);
-        const exp = Array.isArray(expected) ? expected.slice().sort().join("|") : expected;
-        if(got === exp){
-          setMsg(s.successMessage || "Correct!", "ok");
-          showNext(s.successMessage, s.coinsReward);
-        } else {
-          setMsg("Not yet. Try a different set.", "bad");
-        }
-      };
-      content.appendChild(list);
-      content.appendChild(check);
-    }
-
-    function showNext(msg, coins){
-      addCoins(coins || 0);
-      const btn = $("nextBtn");
-      btn.style.display = "inline-block";
-      btn.onclick = () => {
-        G.idx += 1;
-        showStage();
-      };
-    }
-
-    function renderLore(){
-      const box = $("loreBox");
-      const lines = (PLAN.lore || []).slice(0, 5);
-      box.innerHTML = lines.map((line) => '<div class="ov-line">' + line + "</div>").join("");
-    }
-
-    $("startBtn").onclick = () => {
-      $("introOverlay").style.display = "none";
-      showStage();
-    };
-
-    renderLore();
-  </script>
-</body>
-</html>`;
+  return injectLessonRuntime(html, args.lessonPlan, args.island);
 }
