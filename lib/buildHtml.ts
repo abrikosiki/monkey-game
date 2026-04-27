@@ -67,11 +67,13 @@ function injectLessonRuntime(
       || entries.find(function(pair){ return /bg|background|island|left|right/i.test(pair[0]); })
       || entries[0];
     if(!bg || !bg[1]) return;
-    const game = $("game");
-    if(!game) return;
-    game.style.backgroundImage = "url('" + bg[1] + "')";
-    game.style.backgroundSize = "cover";
-    game.style.backgroundPosition = "center";
+    const izone = $("izone");
+    if(!izone) return;
+    // Keep trial world background intact; apply generated art only to interactive zone.
+    izone.style.backgroundImage = "linear-gradient(180deg, rgba(7,12,24,.28), rgba(7,12,24,.46)), url('" + bg[1] + "')";
+    izone.style.backgroundSize = "cover";
+    izone.style.backgroundPosition = "center";
+    izone.style.borderLeft = "1px solid rgba(255,255,255,.12)";
   }
   function applyChildCharacter(){
     const pImg = $("pImg");
@@ -163,14 +165,16 @@ function injectLessonRuntime(
     root.style.padding = "24px 22px 18px";
     root.style.zIndex = "30";
     root.innerHTML = ''
-      + '<div style="width:55%;height:100%;background:rgba(7,12,24,.78);border:1px solid rgba(255,255,255,.16);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;">'
-      + '  <div id="dynTitle" style="font-size:28px;font-family:\\'Fredoka One\\',cursive;color:#f4d03f;"></div>'
-      + '  <div id="dynInstruction" style="font-size:16px;color:#fff;"></div>'
-      + '  <div id="dynQuestion" style="font-size:30px;font-family:\\'Fredoka One\\',cursive;color:#7ee0d4;line-height:1.1;"></div>'
+      + '<div class="q-zone" style="width:55%;height:100%;display:block;">'
+      + '  <div class="q-card" style="height:100%;display:flex;flex-direction:column;gap:10px;">'
+      + '  <div id="dynTitle" class="q-head"></div>'
+      + '  <div id="dynInstruction" class="q-line"></div>'
+      + '  <div id="dynQuestion" class="q-line" style="font-size:44px;line-height:1.02;color:#7ee0d4;font-family:\\'Fredoka One\\',cursive;"></div>'
       + '  <div id="dynIcons" style="display:flex;gap:8px;flex-wrap:wrap;min-height:34px;"></div>'
       + '  <div id="dynContent" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;"></div>'
-      + '  <div id="dynMsg" style="min-height:22px;font-weight:800;"></div>'
-      + '  <button id="dynNextBtn" class="nxt" style="display:none;align-self:flex-start;">Next →</button>'
+      + '  <div id="dynMsg" class="q-line" style="min-height:22px;font-weight:800;"></div>'
+      + '  <button id="dynNextBtn" class="q-btn" style="display:none;align-self:flex-start;">Next →</button>'
+      + '  </div>'
       + '</div>';
 
     izone.appendChild(root);
@@ -316,15 +320,35 @@ function injectLessonRuntime(
 
       // drag_drop represented as selectable chips
       const options = Array.isArray(stage.options) ? stage.options : [];
+      let iconIdx = 0;
       options.forEach(function(item){
+        const imageEntries = Object.entries(GENERATED_IMAGES || {});
+        const iconSrc = imageEntries.length ? safe(imageEntries[iconIdx % imageEntries.length][1]) : "";
+        iconIdx += 1;
         const chip = document.createElement("button");
-        chip.textContent = safe(item);
-        chip.style.padding = "8px 10px";
+        chip.style.padding = "6px 8px";
         chip.style.borderRadius = "999px";
         chip.style.border = "1px solid rgba(126,224,212,.6)";
-        chip.style.background = "rgba(126,224,212,.12)";
+        chip.style.background = "rgba(12,24,38,.65)";
         chip.style.color = "#fff";
         chip.style.cursor = "pointer";
+        chip.style.display = "inline-flex";
+        chip.style.alignItems = "center";
+        chip.style.gap = "6px";
+        if(iconSrc){
+          const img = document.createElement("img");
+          img.src = iconSrc;
+          img.alt = safe(item);
+          img.style.width = "22px";
+          img.style.height = "22px";
+          img.style.objectFit = "cover";
+          img.style.borderRadius = "999px";
+          chip.appendChild(img);
+        }
+        const txt = document.createElement("span");
+        txt.textContent = safe(item);
+        txt.style.fontSize = "12px";
+        chip.appendChild(txt);
         chip.onclick = function(){
           const key = safe(item);
           if(selected.has(key)){
