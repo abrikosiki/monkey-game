@@ -1,0 +1,13 @@
+@import url("https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-brandBg text-white font-nunito;
+}
+
+.panel {
+  @apply rounded-2xl border border-white/10 bg-[#101425]/80 backdrop-blur;
+}
