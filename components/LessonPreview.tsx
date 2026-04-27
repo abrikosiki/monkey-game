@@ -37,7 +37,7 @@ export function LessonPreview({
           Ребёнок: {childName}, {age} лет
         </p>
         <p>Тема: {topic}</p>
-        <p>Этапов: {lessonPlan.stages.length}</p>
+        <p>Этапов: {lessonPlan.stages?.length ?? 6}</p>
         <p>Время: ~45 минут</p>
         <p className="font-semibold text-brandAccent">Код ребёнка: {code}</p>
       </div>

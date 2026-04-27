@@ -1,30 +1,33 @@
 export type Difficulty = "easy" | "medium" | "hard";
 
-export type StageType =
+export type LessonMechanic =
   | "drag_drop"
   | "input"
   | "choice"
-  | "animation"
-  | "drawing";
-
-export interface LessonStage {
-  id: number;
-  type: StageType;
-  title: string;
-  instruction: string;
-  elements: string[];
-  correctAnswer: string[];
-  coinsReward: number;
-  successMessage: string;
-}
+  | "drawing"
+  | "animation";
 
 export interface ImagePrompt {
   filename: string;
   prompt: string;
 }
 
+export interface LessonStage {
+  id: number;
+  block: 1 | 2 | 3 | 4 | 5 | 6;
+  mechanic: LessonMechanic;
+  title: string;
+  instruction: string;
+  question: string;
+  options?: string[];
+  correctAnswer: string | string[];
+  successMessage: string;
+  coinsReward: number;
+}
+
 export interface LessonPlan {
   storyIntro: string;
+  lore: string[];
   stages: LessonStage[];
   imagePrompts: ImagePrompt[];
 }

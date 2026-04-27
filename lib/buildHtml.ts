@@ -1,6 +1,6 @@
 import type { LessonPlan } from "@/lib/types";
 
-function escapeHtml(text: string) {
+function esc(text: string) {
   return text
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -9,52 +9,258 @@ function escapeHtml(text: string) {
     .replaceAll("'", "&#39;");
 }
 
-function renderStage(stage: LessonPlan["stages"][number]) {
-  return `
-    <section class="stage">
-      <h2>${escapeHtml(stage.title)}</h2>
-      <p>${escapeHtml(stage.instruction)}</p>
-      <p><strong>Type:</strong> ${escapeHtml(stage.type)}</p>
-      <p><strong>Reward:</strong> ${stage.coinsReward} coins</p>
-      <p><strong>Success:</strong> ${escapeHtml(stage.successMessage)}</p>
-    </section>
-  `;
-}
-
 export function buildLessonHtml(args: {
   lessonPlan: LessonPlan;
   images: Record<string, string>;
   character: string;
   island: string;
 }) {
-  const { lessonPlan, images, character, island } = args;
-  const stagesHtml = lessonPlan.stages.map(renderStage).join("\n");
-  const imagesHtml = Object.entries(images)
-    .map(([filename, src]) => `<li>${escapeHtml(filename)} → ${escapeHtml(src)}</li>`)
-    .join("");
+  const { lessonPlan, island } = args;
+  const planJson = JSON.stringify(lessonPlan);
 
   return `<!doctype html>
 <html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Monkey Archipelago Lesson</title>
-    <style>
-      body { font-family: Nunito, Arial, sans-serif; background: #1a1a2e; color: #fff; margin: 0; padding: 24px; }
-      .card { max-width: 960px; margin: 0 auto; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); border-radius: 16px; padding: 20px; }
-      h1, h2 { font-family: "Fredoka One", cursive; color: #f4d03f; margin: 0 0 12px; }
-      .stage { background: rgba(0,0,0,0.2); border-radius: 12px; padding: 14px; margin-top: 14px; }
-    </style>
-  </head>
-  <body>
-    <main class="card">
-      <h1>Monkey Archipelago: ${escapeHtml(lessonPlan.storyIntro)}</h1>
-      <p><strong>Character:</strong> ${escapeHtml(character)}</p>
-      <p><strong>Island:</strong> ${escapeHtml(island)}</p>
-      ${stagesHtml}
-      <h2>Generated Images</h2>
-      <ul>${imagesHtml}</ul>
-    </main>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${esc(lessonPlan.storyIntro || "Monkey Archipelago Lesson")}</title>
+  <style>
+    :root{--bg:#101422;--gold:#f4d03f;--accent:#7ee0d4;--danger:#ff7c85}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Nunito,Arial,sans-serif;background:#0d1221;color:#fff}
+    .game{position:relative;min-height:100vh;background:radial-gradient(circle at 20% 10%,#24345d 0,#101422 60%)}
+    .stage-label{position:absolute;top:12px;left:50%;transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.2);font-weight:800;z-index:20}
+    .coins{position:absolute;top:12px;right:16px;padding:8px 12px;border-radius:12px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.2);font-weight:800;z-index:20}
+    .player{position:absolute;left:14px;bottom:48px;width:140px;height:190px;border-radius:14px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:72px;border:2px solid rgba(255,255,255,.2)}
+    .zone{position:absolute;right:0;top:0;width:55%;height:100%;padding:24px 22px 18px}
+    .card{height:100%;background:rgba(7,12,24,.72);border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
+    .title{font-size:24px;font-weight:900;color:var(--gold)}
+    .text{font-size:16px;line-height:1.4}
+    .question{font-size:22px;font-weight:900;color:var(--accent);margin:4px 0 2px}
+    .opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .btn,.opt{border:none;border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer}
+    .opt{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18)}
+    .opt:hover{transform:translateY(-2px)}
+    .btn{background:linear-gradient(135deg,#f7de74,#f4d03f);color:#1a1a2e}
+    .input{width:100%;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.05);color:#fff;font-size:18px}
+    .drop-list{display:flex;flex-wrap:wrap;gap:8px}
+    .pill{padding:8px 10px;border-radius:999px;background:rgba(126,224,212,.15);border:1px solid rgba(126,224,212,.6);cursor:pointer}
+    .pill.sel{background:rgba(244,208,63,.2);border-color:rgba(244,208,63,.8)}
+    .hint{font-size:13px;color:rgba(255,255,255,.7)}
+    .msg{min-height:24px;font-weight:800}
+    .ok{color:#8af5b2}.bad{color:var(--danger)}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:50}
+    .ov-card{width:min(780px,92vw);background:#101728;border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:18px}
+    .ov-title{font-size:30px;font-weight:900;color:var(--gold);margin-bottom:10px}
+    .ov-line{font-size:17px;line-height:1.4}
+  </style>
+</head>
+<body>
+  <div class="game">
+    <div class="stage-label" id="stageLabel">🏝️ ${esc(island)}</div>
+    <div class="coins">🪙 <span id="coinCount">0</span></div>
+    <div class="player">🐵</div>
+    <div class="zone">
+      <div class="card">
+        <div class="title" id="title"></div>
+        <div class="text" id="instruction"></div>
+        <div class="question" id="question"></div>
+        <div id="content"></div>
+        <div class="msg" id="message"></div>
+        <button class="btn" id="nextBtn" style="display:none">Next →</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="introOverlay">
+    <div class="ov-card">
+      <div class="ov-title">✨ ${esc(lessonPlan.storyIntro || "Новый урок")}</div>
+      <div id="loreBox"></div>
+      <button class="btn" id="startBtn" style="margin-top:14px">Начать урок</button>
+    </div>
+  </div>
+
+  <script>
+    const PLAN = ${planJson};
+    const G = { idx: 0, coins: 0, selected: new Set() };
+    const $ = (id) => document.getElementById(id);
+
+    function setMsg(text, cls){
+      const el = $("message");
+      el.textContent = text || "";
+      el.className = "msg " + (cls || "");
+    }
+
+    function addCoins(n){
+      G.coins += Number(n || 0);
+      $("coinCount").textContent = String(G.coins);
+    }
+
+    function normalize(ans){
+      if(Array.isArray(ans)) return ans.map(v => String(v).trim());
+      return String(ans ?? "").trim();
+    }
+
+    function showStage(){
+      const s = PLAN.stages[G.idx];
+      if(!s){
+        $("title").textContent = "🏁 Урок завершён!";
+        $("instruction").textContent = "Отличная работа! Все этапы пройдены.";
+        $("question").textContent = "";
+        $("content").innerHTML = "";
+        setMsg("Ты получил(а) " + G.coins + " монет!", "ok");
+        $("nextBtn").style.display = "none";
+        return;
+      }
+
+      $("stageLabel").textContent = "🏝️ " + ${JSON.stringify(esc(island))} + " — Этап " + (G.idx + 1) + "/6";
+      $("title").textContent = s.title || ("Этап " + (G.idx + 1));
+      $("instruction").textContent = s.instruction || "";
+      $("question").textContent = s.question || "";
+      $("nextBtn").style.display = "none";
+      setMsg("", "");
+
+      const content = $("content");
+      content.innerHTML = "";
+      G.selected.clear();
+
+      if(s.mechanic === "animation"){
+        const p = document.createElement("div");
+        p.className = "text";
+        p.textContent = "Смотри внимательно и нажми Continue";
+        content.appendChild(p);
+        showNext(s.successMessage, s.coinsReward);
+        return;
+      }
+
+      if(s.mechanic === "choice"){
+        const wrap = document.createElement("div");
+        wrap.className = "opts";
+        (s.options || []).forEach((opt) => {
+          const b = document.createElement("button");
+          b.className = "opt";
+          b.textContent = opt;
+          b.onclick = () => {
+            if(String(opt).trim() === normalize(s.correctAnswer)){
+              setMsg(s.successMessage || "Верно!", "ok");
+              showNext(s.successMessage, s.coinsReward);
+            } else {
+              setMsg("Попробуй ещё раз", "bad");
+            }
+          };
+          wrap.appendChild(b);
+        });
+        content.appendChild(wrap);
+        return;
+      }
+
+      if(s.mechanic === "input"){
+        const inp = document.createElement("input");
+        inp.className = "input";
+        inp.inputMode = "numeric";
+        inp.placeholder = "Введи ответ";
+        const btn = document.createElement("button");
+        btn.className = "btn";
+        btn.textContent = "Проверить";
+        btn.onclick = () => {
+          if(inp.value.trim() === normalize(s.correctAnswer)){
+            setMsg(s.successMessage || "Верно!", "ok");
+            showNext(s.successMessage, s.coinsReward);
+          } else {
+            setMsg("Неверно, попробуй снова", "bad");
+          }
+        };
+        content.appendChild(inp);
+        content.appendChild(btn);
+        return;
+      }
+
+      if(s.mechanic === "drawing"){
+        const hint = document.createElement("div");
+        hint.className = "hint";
+        hint.textContent = "Проверка тьютором: поставь галочку, если задание выполнено.";
+        const lab = document.createElement("label");
+        lab.className = "pill";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.style.marginRight = "8px";
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode("Зачтено тьютором"));
+        cb.onchange = () => {
+          if(cb.checked){
+            setMsg(s.successMessage || "Принято!", "ok");
+            showNext(s.successMessage, s.coinsReward);
+          }
+        };
+        content.appendChild(hint);
+        content.appendChild(lab);
+        return;
+      }
+
+      // drag_drop (simple selectable chips)
+      const info = document.createElement("div");
+      info.className = "hint";
+      info.textContent = "Выбери правильные элементы и нажми Проверить";
+      content.appendChild(info);
+      const list = document.createElement("div");
+      list.className = "drop-list";
+      (s.options || []).forEach((item) => {
+        const chip = document.createElement("button");
+        chip.className = "pill";
+        chip.textContent = item;
+        chip.onclick = () => {
+          const key = String(item);
+          if(G.selected.has(key)){
+            G.selected.delete(key);
+            chip.classList.remove("sel");
+          } else {
+            G.selected.add(key);
+            chip.classList.add("sel");
+          }
+        };
+        list.appendChild(chip);
+      });
+      const check = document.createElement("button");
+      check.className = "btn";
+      check.textContent = "Проверить";
+      check.onclick = () => {
+        const got = Array.from(G.selected).sort().join("|");
+        const expected = normalize(s.correctAnswer);
+        const exp = Array.isArray(expected) ? expected.slice().sort().join("|") : expected;
+        if(got === exp){
+          setMsg(s.successMessage || "Верно!", "ok");
+          showNext(s.successMessage, s.coinsReward);
+        } else {
+          setMsg("Пока неверно, попробуй другой набор", "bad");
+        }
+      };
+      content.appendChild(list);
+      content.appendChild(check);
+    }
+
+    function showNext(msg, coins){
+      addCoins(coins || 0);
+      const btn = $("nextBtn");
+      btn.style.display = "inline-block";
+      btn.onclick = () => {
+        G.idx += 1;
+        showStage();
+      };
+    }
+
+    function renderLore(){
+      const box = $("loreBox");
+      const lines = (PLAN.lore || []).slice(0, 5);
+      box.innerHTML = lines.map((line) => '<div class="ov-line">' + line + "</div>").join("");
+    }
+
+    $("startBtn").onclick = () => {
+      $("introOverlay").style.display = "none";
+      showStage();
+    };
+
+    renderLore();
+  </script>
+</body>
 </html>`;
 }
