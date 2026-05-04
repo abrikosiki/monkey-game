@@ -12,22 +12,32 @@ function loadTemplate() {
     .replaceAll('src="assets/characters/', 'src="/assets/characters/');
 }
 
+export type LessonChildProfile = {
+  code?: string | null;
+  name?: string | null;
+  character_type?: string | null;
+  outfit?: string | null;
+  char_img?: string | null;
+  coins?: number | null;
+  level?: number | null;
+  inventory?: unknown;
+  shop_purchases?: unknown;
+  chest_artifacts?: unknown;
+};
+
 function injectLessonRuntime(
   html: string,
   lessonPlan: LessonPlan,
   island: string,
   images: Record<string, string>,
-  childProfile?: {
-    name?: string | null;
-    character_type?: string | null;
-    outfit?: string | null;
-    char_img?: string | null;
-  },
+  childProfile?: LessonChildProfile,
+  apiBaseUrl?: string,
 ) {
   const planJson = JSON.stringify(lessonPlan).replaceAll("</script>", "<\\/script>");
   const islandJson = JSON.stringify(island).replaceAll("</script>", "<\\/script>");
   const imagesJson = JSON.stringify(images ?? {}).replaceAll("</script>", "<\\/script>");
   const childJson = JSON.stringify(childProfile ?? {}).replaceAll("</script>", "<\\/script>");
+  const apiBaseJson = JSON.stringify(apiBaseUrl ?? "").replaceAll("</script>", "<\\/script>");
 
   const runtime = `
 <script id="dynamic-lesson-runtime">
@@ -36,6 +46,20 @@ function injectLessonRuntime(
   const ISLAND_NAME = ${islandJson};
   const GENERATED_IMAGES = ${imagesJson};
   const CHILD = ${childJson};
+  const API_BASE = ${apiBaseJson};
+  function lessonApiOrigin(){
+    function stripSlash(u){
+      var s = u ? String(u) : '';
+      while(s.length && s.charAt(s.length-1)==='/') s = s.slice(0,-1);
+      return s;
+    }
+    var b = (typeof API_BASE === 'string' && API_BASE) ? stripSlash(API_BASE) : '';
+    if(b) return b;
+    if(typeof window !== 'undefined' && window.TRIAL_API_ORIGIN) return stripSlash(window.TRIAL_API_ORIGIN);
+    if(typeof window !== 'undefined' && window.location && window.location.origin && window.location.protocol !== 'blob:')
+      return stripSlash(window.location.origin);
+    return '';
+  }
   const FALLBACK_ICONS = [
     "/assets/characters/shell.webp",
     "/assets/characters/stone1.webp",
@@ -197,9 +221,12 @@ function injectLessonRuntime(
 
   function runLesson(root){
     const stages = Array.isArray(LESSON_PLAN.stages) ? LESSON_PLAN.stages.slice(0,6) : [];
-    let index = 0;
-    let coins = 0;
+    let stageIdx = 0;
+    let roundIdx = 0;
     let selected = new Set();
+    var baseCoins = (CHILD && CHILD.coins != null && CHILD.coins !== "") ? Number(CHILD.coins) : 0;
+    if(!Number.isFinite(baseCoins)) baseCoins = 0;
+    var lessonCoins = 0;
 
     const title = $("dynTitle");
     const instruction = $("dynInstruction");
@@ -211,6 +238,7 @@ function injectLessonRuntime(
     const nextBtn = $("dynNextBtn");
     const stageLabel = $("stageLabel");
     const coinCount = $("coinCount");
+    if(coinCount) coinCount.textContent = String(baseCoins);
 
     function setMsg(text, ok){
       if(!msg) return;
@@ -219,19 +247,93 @@ function injectLessonRuntime(
     }
 
     function grant(reward){
-      coins += Number(reward || 0);
-      if(coinCount) coinCount.textContent = String(coins);
+      lessonCoins += Number(reward || 0);
+      if(coinCount) coinCount.textContent = String(baseCoins + lessonCoins);
     }
 
-    function unlockNext(successText, reward){
-      grant(reward);
-      setMsg(successText || "Great!", true);
-      if(nextBtn){
-        nextBtn.style.display = "inline-block";
-        nextBtn.onclick = function(){
-          index += 1;
-          render();
-        };
+    function persistLessonProgress(){
+      var code = safe(CHILD && CHILD.code).trim();
+      if(!code) return;
+      var origin = lessonApiOrigin();
+      if(!origin){
+        if(typeof console !== "undefined" && console.warn)
+          console.warn("Lesson save skipped: set NEXT_PUBLIC_APP_URL when building, or open from your site and/or set window.TRIAL_API_ORIGIN.");
+        return;
+      }
+      var startInv = [];
+      try{
+        if(Array.isArray(CHILD.inventory)) startInv = CHILD.inventory.slice();
+      }catch(_){}
+      var rewardItem = {
+        id: "lesson_" + String(Date.now()),
+        name: (LESSON_PLAN.storyIntro && String(LESSON_PLAN.storyIntro).slice(0, 80)) || "Lesson reward",
+        label: "⭐",
+        img: "/assets/characters/crown.webp"
+      };
+      var mergedInv = startInv.concat([rewardItem]);
+      var finalCoins = baseCoins + lessonCoins;
+      var sp = Array.isArray(CHILD.shop_purchases) ? CHILD.shop_purchases : [];
+      var ch = Array.isArray(CHILD.chest_artifacts) ? CHILD.chest_artifacts : [];
+      fetch(origin + "/api/child", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: code,
+          coins: finalCoins,
+          inventory: mergedInv,
+          shop_purchases: sp,
+          chest_artifacts: ch,
+          increment_lesson: true
+        })
+      }).then(function(res){
+        if(!res.ok && typeof console !== "undefined" && console.warn)
+          console.warn("Lesson progress save failed:", res.status);
+      }).catch(function(e){
+        if(typeof console !== "undefined" && console.warn) console.warn("Lesson save", e);
+      });
+    }
+
+    function getRoundsForStage(stage){
+      if(!stage) return [];
+      if(Array.isArray(stage.rounds) && stage.rounds.length > 0)
+        return stage.rounds.slice(0,5);
+      return [{
+        instruction: stage.instruction,
+        question: stage.question,
+        options: stage.options,
+        correctAnswer: stage.correctAnswer,
+        successMessage: stage.successMessage
+      }];
+    }
+
+    function finishRoundSuccess(overrideMsg){
+      const stage = stages[stageIdx];
+      const rounds = getRoundsForStage(stage);
+      const round = rounds[roundIdx];
+      const isLastRound = roundIdx >= rounds.length - 1;
+      const fallbackMid = safe(round && round.successMessage) || "Nice! Next one.";
+      const fallbackEnd = safe(stage.successMessage) || "Great job!";
+      const textOut = overrideMsg || (isLastRound ? fallbackEnd : fallbackMid);
+      if(isLastRound){
+        grant(stage.coinsReward || 0);
+        setMsg(textOut, true);
+        if(nextBtn){
+          nextBtn.style.display = "inline-block";
+          nextBtn.onclick = function(){
+            stageIdx += 1;
+            roundIdx = 0;
+            render();
+          };
+        }
+      } else {
+        setMsg(textOut, true);
+        if(nextBtn){
+          nextBtn.style.display = "inline-block";
+          nextBtn.onclick = function(){
+            roundIdx += 1;
+            render();
+          };
+        }
       }
     }
 
@@ -244,27 +346,50 @@ function injectLessonRuntime(
       if(icons) icons.innerHTML = "";
       setMsg("", true);
 
-      const stage = stages[index];
+      const stage = stages[stageIdx];
       if(!stage){
         title.textContent = "🏁 Lesson Completed!";
         instruction.textContent = "Great work! All stages are done.";
         question.textContent = "";
         content.innerHTML = "";
-        setMsg("You earned "+coins+" coins!", true);
+        if(safe(CHILD && CHILD.code)){
+          setMsg("+"+lessonCoins+" coins this lesson · Total coins saved · Level up!", true);
+          persistLessonProgress();
+        }else{
+          setMsg("You earned "+lessonCoins+" coins this lesson.", true);
+        }
         return;
       }
 
-      if(stageLabel) stageLabel.textContent = "🏝️ "+ISLAND_NAME+" — Stage "+(index+1)+"/6";
-      title.textContent = safe(stage.title || ("Stage "+(index+1)));
-      instruction.textContent = safe(stage.instruction || "");
-      question.textContent = safe(stage.question || "");
+      const rounds = getRoundsForStage(stage);
+      const round = rounds[roundIdx];
+      if(!round){
+        stageIdx += 1;
+        roundIdx = 0;
+        render();
+        return;
+      }
+
+      const roundLabel = rounds.length > 1
+        ? (" · Round "+(roundIdx+1)+"/"+rounds.length)
+        : "";
+      if(stageLabel) stageLabel.textContent = "🏝️ "+ISLAND_NAME+" — Stage "+(stageIdx+1)+"/6"+roundLabel;
+      title.textContent = safe(stage.title || ("Stage "+(stageIdx+1)));
+      instruction.textContent = safe(round.instruction || stage.instruction || "");
+      question.textContent = safe(round.question || stage.question || "");
       if(examplesEl){
-        const ex = Array.isArray(stage.examples) ? stage.examples.slice(0,5) : [];
-        examplesEl.textContent = ex.length ? ("Practice: " + ex.join(" • ")) : "";
+        const ex = Array.isArray(stage.examples) ? stage.examples : [];
+        if(ex.length && ex[roundIdx])
+          examplesEl.textContent = "Hint: "+safe(ex[roundIdx]);
+        else if(ex.length)
+          examplesEl.textContent = "Ideas: "+ex.slice(0,5).join(" · ");
+        else
+          examplesEl.textContent = "";
       }
 
       const mechanic = safe(stage.mechanic);
-      const answer = toAnswer(stage.correctAnswer);
+      const answer = toAnswer(round.correctAnswer !== undefined && round.correctAnswer !== null ? round.correctAnswer : stage.correctAnswer);
+      const roundOpts = Array.isArray(round.options) && round.options.length ? round.options : stage.options;
       const imageEntries = Object.entries(GENERATED_IMAGES || {});
       if(icons && imageEntries.length){
         imageEntries.slice(0,6).forEach(function(pair){
@@ -297,17 +422,17 @@ function injectLessonRuntime(
         text.textContent = "Watch the scene, then continue.";
         text.style.color = "rgba(255,255,255,.82)";
         content.appendChild(text);
-        unlockNext(stage.successMessage, stage.coinsReward);
+        finishRoundSuccess();
         return;
       }
 
       if(mechanic === "choice"){
-        (Array.isArray(stage.options) ? stage.options : []).forEach(function(opt){
+        (Array.isArray(roundOpts) ? roundOpts : []).forEach(function(opt){
           const b = document.createElement("button");
           b.className = "q-btn";
           b.textContent = safe(opt);
           b.onclick = function(){
-            if(safe(opt).trim() === safe(answer).trim()) unlockNext(stage.successMessage, stage.coinsReward);
+            if(safe(opt).trim() === safe(answer).trim()) finishRoundSuccess();
             else setMsg("Try again.", false);
           };
           content.appendChild(b);
@@ -318,14 +443,14 @@ function injectLessonRuntime(
       if(mechanic === "input"){
         const inp = document.createElement("input");
         inp.className = "q-input";
-        inp.placeholder = "Enter your answer";
-        inp.inputMode = "numeric";
+        inp.placeholder = "Your answer";
+        inp.inputMode = /^[0-9]+$/.test(safe(answer).trim()) ? "numeric" : "text";
         const b = document.createElement("button");
         b.className = "q-btn";
         b.textContent = "Check";
         b.onclick = function(){
-          if(inp.value.trim() === safe(answer).trim()) unlockNext(stage.successMessage, stage.coinsReward);
-          else setMsg("Not correct, try again.", false);
+          if(inp.value.trim() === safe(answer).trim()) finishRoundSuccess();
+          else setMsg("Not quite. Try again.", false);
         };
         content.appendChild(inp);
         content.appendChild(b);
@@ -343,15 +468,14 @@ function injectLessonRuntime(
         hint.style.background = "rgba(244,208,63,.12)";
         const cb = document.createElement("input");
         cb.type = "checkbox";
-        cb.onchange = function(){ if(cb.checked) unlockNext(stage.successMessage, stage.coinsReward); };
+        cb.onchange = function(){ if(cb.checked) finishRoundSuccess(); };
         hint.appendChild(cb);
-        hint.appendChild(document.createTextNode("Accepted by tutor"));
+        hint.appendChild(document.createTextNode(safe(round.question || "Done drawing")));
         content.appendChild(hint);
         return;
       }
 
-      // drag_drop represented as selectable chips
-      const options = Array.isArray(stage.options) ? stage.options : [];
+      const options = Array.isArray(roundOpts) ? roundOpts : [];
       let iconIdx = 0;
       options.forEach(function(item){
         const imageEntries = Object.entries(GENERATED_IMAGES || {});
@@ -403,7 +527,7 @@ function injectLessonRuntime(
       check.onclick = function(){
         const got = Array.from(selected).map(String);
         if(Array.isArray(answer) ? arrEq(got, answer) : got.join("|")===safe(answer)){
-          unlockNext(stage.successMessage, stage.coinsReward);
+          finishRoundSuccess();
         } else {
           setMsg("Not yet. Try a different set.", false);
         }
@@ -454,12 +578,9 @@ export function buildLessonHtml(args: {
   images: Record<string, string>;
   character: string;
   island: string;
-  childProfile?: {
-    name?: string | null;
-    character_type?: string | null;
-    outfit?: string | null;
-    char_img?: string | null;
-  };
+  /** Optional; defaults from NEXT_PUBLIC_APP_URL / VERCEL_URL so lesson HTML can PATCH progress. */
+  publicAppUrl?: string | null;
+  childProfile?: LessonChildProfile;
 }) {
   let html = loadTemplate();
 
@@ -478,11 +599,23 @@ export function buildLessonHtml(args: {
   html = html.replace("{{STAGE3_SETS_JSON}}", JSON.stringify(fallbackSets));
   html = html.replace("{{STAGE5_SIDES_JSON}}", JSON.stringify(["left", "right", "right"]));
 
+  const publicUrl = resolvePublicAppUrl(args.publicAppUrl);
   return injectLessonRuntime(
     html,
     args.lessonPlan,
     args.island,
     args.images ?? {},
     args.childProfile,
+    publicUrl,
   );
+}
+
+function resolvePublicAppUrl(override?: string | null): string {
+  const o = override?.trim();
+  if (o) return o.replace(/\/$/, "");
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  const v = process.env.VERCEL_URL?.trim();
+  if (v) return `https://${v.replace(/^https?:\/\//, "")}`.replace(/\/$/, "");
+  return "";
 }

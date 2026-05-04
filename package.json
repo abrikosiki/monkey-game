@@ -4,6 +4,7 @@
   "description": "Tutor lesson generator for Monkey Archipelago",
   "scripts": {
     "dev": "next dev",
+    "sync-game": "cp index.html public/game.html",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

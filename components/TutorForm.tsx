@@ -97,11 +97,16 @@ interface ChildData {
   code: string;
   name: string | null;
   age: number | null;
+  gender?: string | null;
+  level?: number | null;
+  customization?: Record<string, unknown> | null;
   character_type: string;
   outfit: string;
   char_img?: string | null;
   coins: number;
-  inventory: string[];
+  inventory: string[] | Record<string, unknown>[];
+  shop_purchases?: unknown;
+  chest_artifacts?: unknown;
 }
 
 interface BuildResponse {
@@ -230,11 +235,22 @@ export function TutorForm() {
           images,
           character: form.character,
           island: form.island,
+          publicAppUrl: typeof window !== "undefined" ? window.location.origin : undefined,
           childProfile: {
+            code: `MONKEY-${childCode.trim()}`,
             name: childData?.name ?? form.childName,
             character_type: childData?.character_type ?? form.character,
             outfit: childData?.outfit ?? "brown",
             char_img: childData?.char_img ?? null,
+            coins: typeof childData?.coins === "number" ? childData.coins : 0,
+            level: typeof childData?.level === "number" ? childData.level : 0,
+            inventory: Array.isArray(childData?.inventory) ? childData.inventory : [],
+            shop_purchases: Array.isArray(childData?.shop_purchases)
+              ? childData.shop_purchases
+              : [],
+            chest_artifacts: Array.isArray(childData?.chest_artifacts)
+              ? childData.chest_artifacts
+              : [],
           },
         }),
       });

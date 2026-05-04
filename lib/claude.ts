@@ -1,11 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { LessonPlan, TutorFormValues } from "@/lib/types";
+import type { LessonPlan, LessonRoundSpec, LessonStage, TutorFormValues } from "@/lib/types";
 
 const systemPrompt = `You design new lesson games for Monkey Archipelago (kids age 5-9).
 Critical rule: never copy legacy trial mechanics (shells/stones/chest keys/corridors/robomonkey).
 Each lesson must feel like a fresh game while preserving the same visual layout style.
 Return only valid JSON, no markdown, no commentary.
-All user-facing text must be in English.`;
+All user-facing text must be in English.
+Pedagogy: tasks must be mathematically correct for the topic; never recycle the same numbers or same question stem across rounds within a stage.
+Difficulty curve: stage 1 easiest → stage 6 hardest for the topic and chosen difficulty; within each stage, round 1 easiest → round 5 hardest ( visibly harder numbers, more steps, or deeper reasoning each round — appropriate to the topic).`;
 
 function getClient() {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -35,8 +37,12 @@ Hard requirements:
 - Do NOT reuse old trial scenes or old NPC storyline
 - Do NOT add any character-creation stage
 - All titles, instructions, questions, and success messages must be in English
-- Keep text minimal: instruction <= 8 words, question <= 12 words
-- Every stage must include exactly 5 short practice examples
+- Keep text minimal: instruction <= 8 words, question <= 12 words (per round)
+- EVERY stage MUST include a "rounds" array with EXACTLY 5 objects (five separate mini-tasks). Each round must have a DIFFERENT question and correct answer; do not duplicate wording or reuse the same operands (e.g. same addition pair) across rounds.
+- Order rounds by difficulty: the **first** of the five rounds easiest → the **fifth** hardest (each step slightly harder than the previous — bigger numbers, extra step, or trickier comparison — fitting the topic and child's age).
+- Order stages by difficulty: stage 1 = gentlest introduction to the topic; stage 6 = peak challenge for this lesson (clear progression across the six stages).
+- For math topics: verify each round's correctAnswer is accurate.
+- Top-level "examples" can mirror short labels for rounds but "rounds" drives the actual UI.
 
 Return JSON strictly in this schema:
 {
@@ -49,11 +55,20 @@ Return JSON strictly in this schema:
       "mechanic": "animation",
       "title": "stage title",
       "instruction": "short instruction for child",
-      "question": "task question",
+      "question": "fallback summary",
       "examples": ["ex1","ex2","ex3","ex4","ex5"],
+      "rounds": [
+        {
+          "instruction": "optional short hint",
+          "question": "round 1 task (unique)",
+          "options": ["option 1", "option 2"],
+          "correctAnswer": "option 1",
+          "successMessage": "short praise"
+        }
+      ],
       "options": ["option 1", "option 2"],
       "visualItems": ["item_a","item_b","item_c","item_d","item_e"],
-      "correctAnswer": "option 1",
+      "correctAnswer": "fallback",
       "successMessage": "success text",
       "coinsReward": 10
     }
@@ -95,16 +110,34 @@ Return JSON strictly in this schema:
 }
 
 Additional JSON rules:
-- stages must have exactly 6 items (id=1..6, block=1..6)
-- examples required for every stage and must be length 5
-- options required for mechanic=choice and drag_drop
-- correctAnswer: string for input/choice/animation/drawing, array for drag_drop
-- for drawing use correctAnswer = "accepted by tutor"
+- stages must have exactly 6 items (id=1..6, block=1..6); overall lesson difficulty must ramp up from stage 1 through stage 6
+- examples required for every stage and must be length 5 (short phrases aligned with rounds)
+- rounds must have exactly 5 items per stage; each round MUST include "question" and "correctAnswer"; list them in order round 1→5 with strictly increasing difficulty (JSON array index 0 = round 1, index 4 = round 5)
+- round.options: required when stage.mechanic is choice or drag_drop (3-5 distinct labels per round if choice)
+- stage-level options/correctAnswer are fallbacks only; gameplay uses rounds[]
+- for mechanic=drawing each round may use correctAnswer "ok" and short question
+- for mechanic=animation use exactly 1 round in "rounds" with question "Ready?" and correctAnswer "go", OR 5 ultra-short tap rounds — prefer 1 round for animation
+- correctAnswer: string for input/choice/animation/drawing, array for drag_drop multi-select
+- for drawing use correctAnswer = "accepted by tutor" or "ok"
 - keep wording short, playful, age-appropriate`;
 }
 
 function sanitizeTextResponse(text: string) {
   return text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+}
+
+function normalizeRounds(stage: LessonStage): LessonRoundSpec[] | undefined {
+  const raw = stage.rounds;
+  if (Array.isArray(raw) && raw.length > 0) {
+    return raw.slice(0, 5).map((r) => ({
+      instruction: r.instruction,
+      question: r.question || stage.question || "?",
+      options: Array.isArray(r.options) ? r.options : undefined,
+      correctAnswer: r.correctAnswer ?? stage.correctAnswer,
+      successMessage: r.successMessage,
+    }));
+  }
+  return undefined;
 }
 
 function normalizeLessonPlan(raw: LessonPlan): LessonPlan {
@@ -113,6 +146,7 @@ function normalizeLessonPlan(raw: LessonPlan): LessonPlan {
     ...stage,
     id: idx + 1,
     block: (idx + 1) as 1 | 2 | 3 | 4 | 5 | 6,
+    rounds: normalizeRounds(stage),
     coinsReward: stage.coinsReward ?? 10,
     successMessage: stage.successMessage || "Great job! Keep going! ✨",
     question: stage.question || stage.instruction || "Complete the task",
@@ -165,7 +199,7 @@ export async function generateLessonPlan(
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: systemPrompt,
     messages: [{ role: "user", content: buildPrompt({ ...payload, characterName: charName }) }],
   });

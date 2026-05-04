@@ -12,6 +12,15 @@ export interface ImagePrompt {
   prompt: string;
 }
 
+/** One interactive beat inside a stage (typically 5 per stage). */
+export interface LessonRoundSpec {
+  instruction?: string;
+  question: string;
+  options?: string[];
+  correctAnswer: string | string[];
+  successMessage?: string;
+}
+
 export interface LessonStage {
   id: number;
   block: 1 | 2 | 3 | 4 | 5 | 6;
@@ -25,6 +34,8 @@ export interface LessonStage {
   correctAnswer: string | string[];
   successMessage: string;
   coinsReward: number;
+  /** If set (ideally length 5), each entry is a separate in-stage round with its own task and answer. */
+  rounds?: LessonRoundSpec[];
 }
 
 export interface LessonPlan {

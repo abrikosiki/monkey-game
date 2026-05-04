@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Умножение: Сложные Механизмы</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap');
+  
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0; font-family: 'Fredoka', sans-serif; background: #1a1a2e; color: #fff; touch-action: none; overflow: hidden; }
+  
+  .screen { display: none; width: 100vw; height: 100vh; position: relative; background: radial-gradient(circle at top, #2f2f4f, #121223); }
+  .screen.active { display: block; }
+  
+  /* HUD */
+  .player-side { position: absolute; left: 20px; bottom: 48px; background: rgba(0,0,0,0.5); padding: 15px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; border: 2px solid #5a5a8a;}
+  .player-avatar { font-size: 64px; line-height: 1;}
+  .player-name { font-size: 16px; margin-top: 5px; font-weight: bold; color: #a4a4f0;}
+  
+  .coins-hud { position: absolute; top: 20px; right: 20px; font-size: 28px; font-weight: bold; background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 30px; display: flex; align-items: center; border: 2px solid #ffd700;}
+  
+  .stage-label { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); font-size: 24px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; color: #c4c4ff;}
+  
+  /* Interactive zones */
+  .interactive-zone { position: absolute; right: 0; width: 60%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; border-left: 2px dashed rgba(255,255,255,0.1); background: rgba(0,0,0,0.2);}
+  .full-zone { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  
+  .task-text { font-size: 28px; margin-bottom: 30px; text-align: center; max-width: 80%; }
+  
+  /* Buttons */
+  button.action-btn { background: #5d5dff; color: white; border: none; padding: 15px 40px; font-size: 24px; font-family: inherit; font-weight: bold; border-radius: 30px; cursor: pointer; box-shadow: 0 4px 15px rgba(93,93,255,0.4); text-transform: uppercase; transition: transform 0.1s;}
+  button.action-btn:active { transform: scale(0.95); }
+  
+  /* Stage 2 Drag Objects */
+  .draggable-class { font-size: 45px; cursor: grab; user-select: none; z-index: 10; touch-action: none; }
+  .draggable-class:active { cursor: grabbing; }
+  .draggable-class.gone { pointer-events: none; } /* removed opacity change so they stay visible when dropped */
+  
+  .drop-zone { border: 3px dashed rgba(255,255,255,0.4); border-radius: 15px; width: 140px; height: 70px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); transition: background 0.3s;}
+  .drop-zone.filled { border-color: lime; background: rgba(0,255,0,0.1); }
+  
+  .matrix { display: grid; grid-template-rows: repeat(4, 1fr); gap: 15px; }
+  .items-pile { position: absolute; left: 5%; top: 40%; width: 30%; height: 40%; display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start;}
+  
+  /* Inputs */
+  .cipher-input { width: 90px; height: 90px; font-size: 40px; font-family: 'Fredoka', monospace; text-align: center; border: 4px solid #888; border-radius: 16px; background: rgba(0,0,0,0.8); color: white; outline: none; transition: border-color 0.3s;}
+  .cipher-input.correct { border-color: lime; color: lime; background: rgba(0,255,0,0.1); }
+  .cipher-input.wrong { border-color: red; color: red; animation: shake 0.4s; }
+  
+  .door-panel { background: #333; padding: 30px; border-radius: 20px; border: 4px solid #555; display: inline-flex; flex-direction: column; align-items: center; gap: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);}
+  
+  /* Animations */
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-10px); }
+    75% { transform: translateX(10px); }
+  }
+  
+  @keyframes float {
+    0% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(5deg); }
+    100% { transform: translateY(0px) rotate(0deg); }
+  }
+  
+  .shake-anim { animation: shake 0.5s; }
+  
+  /* Success overlay */
+  .success-screen { display: none; position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,40,20,0.9); z-index: 999; justify-content: center; align-items: center; flex-direction: column; animation: fadeIn 0.5s;}
+  .success-screen.on { display: flex; }
+  .s-stars { font-size: 60px; margin-bottom: 20px; letter-spacing: 10px;}
+  .s-title { font-size: 48px; color: #4ade80; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;}
+  .s-sub { font-size: 24px; margin-bottom: 40px; color: #a4a4f0;}
+  
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  
+  /* Damage Particles */
+  .floating-minus { position: absolute; font-size: 30px; font-weight: bold; color: #ff4d4d; animation: floatUpFade 1s cubic-bezier(0,0.5,0.5,1) forwards; pointer-events: none;}
+  .floating-plus { position: absolute; font-size: 30px; font-weight: bold; color: #ffd700; animation: floatUpFade 1.5s cubic-bezier(0,0.5,0.5,1) forwards; pointer-events: none;}
+  @keyframes floatUpFade {
+    0% { transform: translateY(0) scale(1); opacity: 1;}
+    100% { transform: translateY(-80px) scale(1.5); opacity: 0;}
+  }
+
+  /* Specific Elements */
+  .bad-coconut { display: inline-block; animation: float 3s ease-in-out infinite alternate; cursor: pointer; transition: transform 0.2s;}
+  .bad-coconut:hover { transform: scale(1.1); }
+  .bad-coconut.cleared { opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+  
+  .array-grid { display: grid; grid-template-columns: repeat(5, 50px); grid-template-rows: repeat(3, 50px); gap: 10px; margin-bottom: 30px; transition: gap 0.5s;}
+  .array-item { font-size: 40px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1); border-radius: 10px; border: 2px solid transparent;}
+  
+  .horiz-group .array-item { border-color: rgba(93,93,255,0.8); }
+  .vert-group .array-item { border-color: lime; }
+</style>
+</head>
+<body>
+
+  <!-- Global UI -->
+  <div class="player-side" id="playerSide">
+    <div class="player-avatar">👧🏽</div>
+    <div class="player-name">Ева</div>
+  </div>
+  
+  <div class="coins-hud">
+    🪙 <span id="coinCount">0</span>
+  </div>
+
+  <div class="stage-label" id="stageLabel">Введение</div>
+
+  <!-- STAGE 1: INTRO -->
+  <div class="screen active" id="stage1">
+    <div class="full-zone" style="background: radial-gradient(circle, #3a2222, #111);">
+      <div style="font-size: 100px; margin-bottom: 20px;">🏴‍☠️</div>
+      <div class="task-text" style="color: #ffaaaa;">
+        Ха-ха! Я — Пират-Механик!<br>
+        Я сломал Главный Генератор Острова!<br>
+        Теперь мои анти-батарейки сжигают вашу энергию!<br>
+      </div>
+      <button class="action-btn" onclick="nextStage(2)">ПОЧИНИТЬ МЕХАНИЗМЫ</button>
+    </div>
+  </div>
+
+  <!-- STAGE 2: MATRIX DROP -->
+  <div class="screen" id="stage2">
+    <div class="task-text" style="position: absolute; width: 40%; left: 0; top: 10%; text-align: center; padding: 20px;">
+      Нужно запитать 4 ряда генератора.<br><br>Перетащи "блоки энергий" (по 3 батарейки сразу) в рабочие отсеки!
+    </div>
+    <div class="items-pile">
+      <!-- 4 blocks of 3 batteries -->
+      <div class="draggable-class" style="left: 10%; top: 10%">🔋🔋🔋</div>
+      <div class="draggable-class" style="left: 50%; top: 20%">🔋🔋🔋</div>
+      <div class="draggable-class" style="left: 20%; top: 50%">🔋🔋🔋</div>
+      <div class="draggable-class" style="left: 60%; top: 60%">🔋🔋🔋</div>
+    </div>
+    
+    <div class="interactive-zone" style="background: url('data:image/svg+xml;utf8,<svg viewBox=\"0 0 100 100\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"100\" height=\"100\" fill=\"#2a2a3a\"/></svg>') center/cover;">
+      <div class="matrix">
+        <div class="drop-zone"></div>
+        <div class="drop-zone"></div>
+        <div class="drop-zone"></div>
+        <div class="drop-zone"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STAGE 3: NEGATIVE GROUPS -->
+  <div class="screen" id="stage3">
+    <div style="position:absolute; width:100%; height:100%; pointer-events:none; background: linear-gradient(rgba(100,0,0,0.2), #111);"></div>
+    <div class="task-text" style="position: absolute; top: 10%; width: 100%; text-align: center;">
+      ⚠️ УТЕЧКА ЭНЕРГИИ!<br>
+      Пробита труба! Выпадают сбойные анти-батарейки (красные кокосы).<br>
+      Кликай по <b>группам из 2</b>, чтобы сбросить их в лаву!
+    </div>
+    
+    <div id="bad-coconuts-container" style="position: absolute; top:35%; left: 0; width: 100%; display: flex; justify-content: center; gap: 40px; padding: 50px;">
+      <!-- JavaScript will inject groups here -->
+    </div>
+  </div>
+
+  <!-- STAGE 4: MEANING OF NUMBERS -->
+  <div class="screen" id="stage4">
+    <div class="full-zone">
+      <div class="task-text">
+        Взлом системы Генератора: посмотри на экран!<br>
+        <span style="font-size: 20px; color: #aacaa0;">Матрицу можно читать и по рядам, и по столбцам. Общее количество энергии не меняется!</span>
+      </div>
+      
+      <div class="array-grid" id="theArray">
+        <!-- 15 items injected via JS -->
+      </div>
+      
+      <button class="action-btn" onclick="toggleArrayView()" style="background: #a040b0; margin-bottom: 20px;">ПЕРЕКЛЮЧИТЬ ПОДСВЕТКУ</button>
+      <button class="action-btn" id="s4_nextBtn" onclick="nextStage(5)" style="display: none;">ПОНЯТНО! ДАЛЬШЕ</button>
+    </div>
+  </div>
+
+  <!-- STAGE 5: ABSTRACTION INPUTS -->
+  <div class="screen" id="stage5">
+    <div class="task-text" style="position: absolute; left: 10%; top: 20%; width: 35%;">
+      Вводим пароли:<br>
+      <div style="font-size: 20px; color: #aaa; margin-top:20px; text-align:left;">
+        🔒 <b>Блок А:</b> 4 ряда по 3 батарейки.<br>Сколько всего энергии? <b>(4 × 3 = ?)</b><br><br><br>
+        💣 <b>Блок Б:</b> 3 трубы сжигают по 2 анти-батарейки.<br>Потеря энергии: <b>(3 × (-2) = ?)</b>
+      </div>
+    </div>
+    
+    <div class="interactive-zone" style="flex-direction: row; gap: 40px;">
+      <div class="door-panel">
+        <div>4 × 3</div>
+        <input type="text" class="cipher-input s5-input" data-answer="12" maxlength="3" oninput="checkInput(this, 's5')">
+      </div>
+      
+      <div class="door-panel" style="border-color: #833;">
+        <div style="color: #f77;">3 × (-2)</div>
+        <input type="text" class="cipher-input s5-input" data-answer="-6" maxlength="3" oninput="checkInput(this, 's5')">
+      </div>
+    </div>
+  </div>
+
+  <!-- STAGE 6: FINAL MISSION -->
+  <div class="screen" id="stage6">
+    <div class="full-zone">
+      <div class="task-text" style="color: #ffd700; font-size: 36px;">⚡ ГЛАВНЫЙ ЩИТок УПРАВЛЕНИЯ ⚡</div>
+      
+      <div style="display: flex; gap: 40px; margin-top: 20px;">
+        <!-- Wire 1 -->
+        <div class="door-panel" style="border-color: #55f;">
+          <div style="font-size:30px">🔵 Синий провод</div>
+          <div>5 раз по 3</div>
+          <div style="color:#aaa">5 × 3</div>
+          <input type="text" class="cipher-input s6-input" data-answer="15" maxlength="3" oninput="checkInput(this, 's6')">
+        </div>
+        
+        <!-- Wire 2 -->
+        <div class="door-panel" style="border-color: #f55; animation: shadowPulse 2s infinite alternate;">
+          <div style="font-size:30px; color:#f55">🔴 Искрящий провод</div>
+          <div>4 раза потери по 2</div>
+          <div style="color:#a77">4 × (-2)</div>
+          <input type="text" class="cipher-input s6-input" data-answer="-8" maxlength="3" oninput="checkInput(this, 's6')">
+        </div>
+        
+        <!-- Wire 3 -->
+        <div class="door-panel" style="border-color: #fd5;">
+          <div style="font-size:30px; color:#fd5">🟡 Золотая цепь</div>
+          <div>Массив батареек 4х4</div>
+          <div style="color:#aa7">4 × 4</div>
+          <input type="text" class="cipher-input s6-input" data-answer="16" maxlength="3" oninput="checkInput(this, 's6')">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUCCESS OVERLAY -->
+  <div class="success-screen" id="successScreen">
+    <div class="s-stars">⭐⭐⭐</div>
+    <div class="s-title">ОТЛИЧНО!</div>
+    <div class="s-sub" id="successMsg">Механизм заработал!</div>
+    <button class="action-btn" onclick="closeSuccess()">ДАЛЬШЕ →</button>
+  </div>
+
+<script>
+  /* --- GLOBAL STATE --- */
+  const G = { coins: 0, stage: 1, successCb: null };
+
+  function addCoins(n) {
+    G.coins += n;
+    document.getElementById('coinCount').textContent = G.coins;
+    
+    // Animate +coins
+    const hud = document.querySelector('.coins-hud');
+    const b = document.createElement('div');
+    b.className = 'floating-plus';
+    b.textContent = '+' + n;
+    b.style.right = '40px';
+    b.style.top = '60px';
+    document.body.appendChild(b);
+    setTimeout(() => b.remove(), 1500);
+  }
+
+  function showSuccess(msg, coins, callback) {
+    if(coins) addCoins(coins);
+    G.successCb = callback;
+    document.getElementById('successMsg').textContent = msg;
+    document.getElementById('successScreen').classList.add('on');
+    createConfetti();
+  }
+
+  function closeSuccess() {
+    document.getElementById('successScreen').classList.remove('on');
+    if(G.successCb) {
+       const cb = G.successCb;
+       G.successCb = null;
+       cb();
+    }
+  }
+
+  function nextStage(n) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('stage' + n).classList.add('active');
+    G.stage = n;
+    
+    // Setup logic per stage
+    const labels = {
+      1: "Введение",
+      2: "Этап 1: Массивы энергии",
+      3: "Этап 2: Утечка и потери (-)",
+      4: "Этап 3: Анализ системы",
+      5: "Этап 4: Коды доступа",
+      6: "ФИНАЛЬНАЯ МИССИЯ"
+    };
+    document.getElementById('stageLabel').textContent = labels[n] || "";
+    
+    if (n === 2) initStage2();
+    if (n === 3) initStage3();
+    if (n === 4) initStage4();
+    if (n === 5) initStage5();
+    if (n === 6) initStage6();
+  }
+
+  /* --- STAGE 2: DRAG AND DROP --- */
+  let dragEl = null, offsetX=0, offsetY=0;
+  
+  function getPos(e) {
+    if(e.touches && e.touches.length) return {x: e.touches[0].clientX, y: e.touches[0].clientY};
+    return {x: e.clientX, y: e.clientY};
+  }
+
+  document.addEventListener('mousedown', onDragStart);
+  document.addEventListener('touchstart', onDragStart, {passive: false});
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('touchmove', onDragMove, {passive: false});
+  document.addEventListener('mouseup', onDragEnd);
+  document.addEventListener('touchend', onDragEnd);
+
+  function onDragStart(e) {
+    if (G.stage !== 2) return;
+    const {x, y} = getPos(e);
+    const els = document.elementsFromPoint(x, y);
+    const found = els.find(el => el.classList.contains('draggable-class') && !el.classList.contains('gone'));
+    if (!found) return;
+    
+    dragEl = found;
+    const rect = dragEl.getBoundingClientRect();
+    offsetX = x - rect.left;
+    offsetY = y - rect.top;
+    
+    dragEl.style.position = 'fixed';
+    dragEl.style.zIndex = 1000;
+    if(!dragEl.dataset.startX) {
+       dragEl.dataset.startX = rect.left + 'px';
+       dragEl.dataset.startY = rect.top + 'px';
+    }
+  }
+
+  function onDragMove(e) {
+    if (!dragEl || G.stage !== 2) return;
+    e.preventDefault(); // stop scroll
+    const {x, y} = getPos(e);
+    dragEl.style.left = (x - offsetX) + 'px';
+    dragEl.style.top = (y - offsetY) + 'px';
+  }
+
+  function onDragEnd(e) {
+    if (!dragEl || G.stage !== 2) return;
+    const rect = dragEl.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    
+    dragEl.style.display = 'none';
+    const els = document.elementsFromPoint(cx, cy);
+    dragEl.style.display = '';
+    
+    const dropTarget = els.find(el => el.classList.contains('drop-zone') && !el.classList.contains('filled'));
+    
+    if (dropTarget) {
+      // Success
+      dropTarget.appendChild(dragEl);
+      dragEl.style.position = 'static';
+      dragEl.classList.add('gone');
+      dropTarget.classList.add('filled');
+      
+      checkStage2Win();
+    } else {
+      // Revert
+      dragEl.style.transition = 'all 0.3s';
+      dragEl.style.left = dragEl.dataset.startX;
+      dragEl.style.top = dragEl.dataset.startY;
+      setTimeout(() => { dragEl.style.transition = ''; }, 300);
+    }
+    dragEl = null;
+  }
+
+  function initStage2() { }
+  function checkStage2Win() {
+    const filled = document.querySelectorAll('#stage2 .drop-zone.filled').length;
+    if (filled === 4) {
+      setTimeout(() => {
+        showSuccess("Отлично! Ты зарядила 4 ряда по 3 ячейки!", 15, () => nextStage(3));
+      }, 500);
+    }
+  }
+
+  /* --- STAGE 3: NEGATIVE GROUPS --- */
+  function initStage3() {
+    const c = document.getElementById('bad-coconuts-container');
+    c.innerHTML = '';
+    
+    // Create 3 groups of bad coconuts (-2)
+    for(let i=0; i<3; i++) {
+       const grp = document.createElement('div');
+       grp.className = 'bad-coconut';
+       grp.innerHTML = '<span style="font-size:60px">🥥🥥</span><br><span style="color:#f44;font-size:24px;font-weight:bold">-2 Энергии</span>';
+       grp.onclick = (e) => killBadGroup(e, grp);
+       c.appendChild(grp);
+    }
+  }
+  
+  function killBadGroup(e, el) {
+    if(el.classList.contains('cleared')) return;
+    el.classList.add('cleared');
+    
+    // Popup text: "-2"
+    const p = document.createElement('div');
+    p.className = 'floating-minus';
+    p.textContent = '-2 удалено';
+    p.style.left = e.clientX + 'px';
+    p.style.top = e.clientY + 'px';
+    document.body.appendChild(p);
+    
+    // Check win
+    const remains = document.querySelectorAll('#stage3 .bad-coconut:not(.cleared)').length;
+    if(remains === 0) {
+      setTimeout(() => {
+        showSuccess("Опасность устранена! Мы потеряли 3 раза по 2 энергии...", 10, () => nextStage(4));
+      }, 1000);
+    }
+  }
+
+  /* --- STAGE 4: MEANING OF NUMBERS (ARRAY) --- */
+  let arrayState = 0; // 0=none, 1=horiz, 2=vert
+  function initStage4() {
+    const arr = document.getElementById('theArray');
+    arr.innerHTML = '';
+    for(let i=0; i<15; i++) {
+      const it = document.createElement('div');
+      it.className = 'array-item';
+      it.textContent = '🔌';
+      arr.appendChild(it);
+    }
+    arrayState = 0;
+  }
+  
+  function toggleArrayView() {
+    const arr = document.getElementById('theArray');
+    arrayState = (arrayState + 1) % 3;
+    arr.className = 'array-grid'; // reset
+    if (arrayState === 1) {
+       arr.classList.add('horiz-group');
+       // simulate horizontal grouping by widening vertical gap slightly
+       arr.style.gap = '20px 10px';
+    } else if (arrayState === 2) {
+       arr.classList.add('vert-group');
+       arr.style.gap = '10px 20px';
+       document.getElementById('s4_nextBtn').style.display = 'inline-block';
+    } else {
+       arr.style.gap = '10px 10px';
+    }
+  }
+
+  /* --- STAGE 5 & 6: IMPUTS --- */
+  function initStage5() {
+     document.querySelectorAll('#stage5 input').forEach(i => { i.value=''; i.classList.remove('correct','wrong'); i.disabled=false; });
+  }
+  function initStage6() {
+     document.querySelectorAll('#stage6 input').forEach(i => { i.value=''; i.classList.remove('correct','wrong'); i.disabled=false; });
+  }
+
+  function checkInput(el, prefix) {
+    const valStr = el.value.trim();
+    if(valStr === '' || valStr === '-') return; // skip checking empty or single minus
+    
+    const val = parseInt(valStr);
+    const answer = parseInt(el.dataset.answer);
+    
+    // Wait until lengths vaguely match if it's not correct yet, to avoid punishing too early
+    const lenExpected = el.dataset.answer.length;
+
+    if (val === answer) {
+       el.classList.add('correct');
+       el.classList.remove('wrong');
+       el.disabled = true;
+       
+       // Check all in this scope
+       checkInputWins(prefix);
+    } else if (valStr.length >= lenExpected) {
+       el.classList.add('wrong');
+       setTimeout(() => {
+          el.classList.remove('wrong');
+          el.value = '';
+       }, 500);
+    }
+  }
+  
+  function checkInputWins(prefix) {
+     const inputs = Array.from(document.querySelectorAll('.' + prefix + '-input'));
+     const allCorrect = inputs.every(i => i.classList.contains('correct'));
+     if (allCorrect) {
+        if (prefix === 's5') {
+           setTimeout(() => showSuccess("Коды приняты! Доступ к Генератору открыт!", 15, () => nextStage(6)), 600);
+        } else if (prefix === 's6') {
+           // FINAL WIN
+           setTimeout(() => {
+              document.body.style.background = '#eef'; // bright flash
+              setTimeout(() => {
+                 document.body.style.background = '';
+                 showSuccess("ВЕЛИКОЛЕПНО! ГЕНЕРАТОР ЗАПУЩЕН! ВЕСЬ ОСТРОВ СПАСЁН!", 50, () => {
+                    alert("УРОК ОКОНЧЕН! ВЫЕЗЖАЕТ МЕНЮ ПРОФИЛЯ...");
+                 });
+              }, 300);
+           }, 800);
+        }
+     }
+  }
+
+  /* --- CONFETTI --- */
+  function createConfetti() {
+     const colors = ['#f44','#4f4','#44f','#ff4','#f4f'];
+     for(let i=0; i<30; i++) {
+        const c = document.createElement('div');
+        c.textContent = '⭐';
+        c.style.position = 'absolute';
+        c.style.left = (Math.random() * 100) + 'vw';
+        c.style.top = '-50px';
+        c.style.fontSize = (10 + Math.random()*20) + 'px';
+        c.style.zIndex = 10000;
+        c.style.transition = 'transform 2s cubic-bezier(.37,0,.63,1)';
+        document.body.appendChild(c);
+        
+        setTimeout(() => {
+           c.style.transform = `translate(${Math.random()*200 - 100}px, ${window.innerHeight + 100}px) rotate(${Math.random()*720}deg)`;
+        }, 10);
+        setTimeout(() => c.remove(), 2000);
+     }
+  }
+
+</script>
+</body>
+</html>

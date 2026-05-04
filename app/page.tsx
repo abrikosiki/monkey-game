@@ -10,6 +10,14 @@ export default function HomePage() {
         <p className="mt-3 text-white/75">
           Fill the form to generate a complete lesson HTML with storyline, images, and interactive stages.
         </p>
+        <p className="mt-4">
+          <a
+            href="/game.html"
+            className="inline-flex rounded-full bg-brandAccent px-5 py-2 font-semibold text-[#121223] no-underline transition hover:opacity-90"
+          >
+            Открыть пробную игру
+          </a>
+        </p>
       </div>
       <TutorForm />
     </main>
