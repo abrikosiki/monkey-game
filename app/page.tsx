@@ -17,6 +17,12 @@ export default function HomePage() {
           >
             Открыть пробную игру
           </a>
+          <a
+            href="/game_ru.html"
+            className="ml-3 inline-flex rounded-full bg-brandAccent px-5 py-2 font-semibold text-[#121223] no-underline transition hover:opacity-90"
+          >
+            Пробная игра на русском
+          </a>
         </p>
       </div>
       <TutorForm />
